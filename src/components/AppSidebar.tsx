@@ -9,7 +9,8 @@ import {
   Heart,
   Folder,
   Sparkles,
-  LogOut
+  LogOut,
+  Upload
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -32,6 +33,7 @@ const mainNavItems = [
   { title: "Gallery", url: "/", icon: Home },
   { title: "Generate", url: "/generate", icon: Sparkles },
   { title: "My Images", url: "/my-images", icon: Image },
+  { title: "Upload", url: "/upload", icon: Upload },
   { title: "Albums", url: "/albums", icon: Folder },
   { title: "Favorites", url: "/favorites", icon: Heart },
   { title: "Search", url: "/search", icon: Search },

@@ -1,77 +1,36 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Filter, Grid, List, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { listImages, getThumbnailUrl } from "@/lib/api";
 
-const sampleImages = [
-  {
-    id: 1,
-    url: "https://images.unsplash.com/photo-1686191128892-4462634c36cf?w=400&h=400&fit=crop",
-    title: "Cyberpunk City",
-    prompt: "A futuristic cyberpunk cityscape at night with neon lights",
-    tags: ["cyberpunk", "city", "neon", "futuristic"],
-    likes: 24,
-    createdAt: "2024-01-15",
-  },
-  {
-    id: 2,
-    url: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=400&h=400&fit=crop",
-    title: "Mystical Forest",
-    prompt: "A magical forest with glowing mushrooms and fairy lights",
-    tags: ["fantasy", "forest", "magical", "mushrooms"],
-    likes: 18,
-    createdAt: "2024-01-14",
-  },
-  {
-    id: 3,
-    url: "https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=400&h=400&fit=crop",
-    title: "Space Explorer",
-    prompt: "An astronaut floating in space with distant galaxies",
-    tags: ["space", "astronaut", "galaxy", "cosmic"],
-    likes: 32,
-    createdAt: "2024-01-13",
-  },
-  {
-    id: 4,
-    url: "https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=400&h=400&fit=crop",
-    title: "Dragon's Lair",
-    prompt: "A majestic dragon in its treasure-filled cave",
-    tags: ["dragon", "fantasy", "treasure", "cave"],
-    likes: 45,
-    createdAt: "2024-01-12",
-  },
-  {
-    id: 5,
-    url: "https://images.unsplash.com/photo-1579353977828-2a4eab540b9b?w=400&h=400&fit=crop",
-    title: "Ocean Depths",
-    prompt: "Deep sea creatures in a bioluminescent underwater world",
-    tags: ["ocean", "underwater", "bioluminescent", "creatures"],
-    likes: 28,
-    createdAt: "2024-01-11",
-  },
-  {
-    id: 6,
-    url: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=400&fit=crop",
-    title: "Mountain Peak",
-    prompt: "A snow-capped mountain peak during golden hour",
-    tags: ["mountain", "snow", "golden hour", "nature"],
-    likes: 19,
-    createdAt: "2024-01-10",
-  },
-];
+type UIItem = { id: string; url: string; title: string; prompt?: string; tags: string[]; likes: number; createdAt: string };
 
 export default function Gallery() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [items, setItems] = useState<UIItem[]>([])
 
-  const allTags = Array.from(
-    new Set(sampleImages.flatMap(img => img.tags))
-  ).slice(0, 8);
+  useEffect(() => {
+    listImages().then(list => {
+      const mapped: UIItem[] = list.map(i => ({
+        id: i.id,
+        url: getThumbnailUrl(i.id),
+        title: i.filename,
+        tags: [],
+        likes: 0,
+        createdAt: i.uploadedAt
+      }))
+      setItems(mapped)
+    }).catch(() => setItems([]))
+  }, [])
 
-  const filteredImages = sampleImages.filter(img => {
+  const allTags = Array.from(new Set(items.flatMap(img => img.tags))).slice(0, 8);
+
+  const filteredImages = items.filter(img => {
     const matchesSearch = img.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          img.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
