@@ -1,0 +1,39 @@
+{
+  "name": "image-gallery",
+  "version": "1.0.0",
+  "description": "Full-stack image gallery application with React frontend and Node.js backend services",
+  "private": true,
+  "scripts": {
+    "start": "node start-local.js",
+    "start:docker": "docker-compose up",
+    "start:docker:dev": "docker-compose up --build",
+    "start:docker:services": "docker-compose up postgres redis minio",
+    "start:docker:backend": "docker-compose up backend worker",
+    "start:docker:frontend": "docker-compose up frontend",
+    "start:local": "node start-local.js",
+    "start:local:services": "docker-compose up -d postgres redis minio",
+    "start:local:all": "concurrently \"npm run start:local:backend\" \"npm run start:local:worker\" \"npm run start:local:frontend\"",
+    "start:local:frontend": "cd frontend && npm run dev",
+    "start:local:backend": "cd backendUploader && npm start",
+    "start:local:worker": "cd processing-storage && npm start",
+    "stop": "docker-compose down",
+    "stop:all": "docker-compose down -v",
+    "build": "docker-compose build",
+    "logs": "docker-compose logs -f",
+    "logs:backend": "docker-compose logs -f backend",
+    "logs:frontend": "docker-compose logs -f frontend",
+    "logs:worker": "docker-compose logs -f worker",
+    "install:all": "npm install && cd frontend && npm install && cd ../backendUploader && npm install && cd ../processing-storage && npm install",
+    "test": "npm run test:backend && npm run test:worker",
+    "test:backend": "cd backendUploader && npm test",
+    "test:worker": "cd processing-storage && npm test"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "workspaces": [
+    "frontend",
+    "backendUploader", 
+    "processing-storage"
+  ]
+}

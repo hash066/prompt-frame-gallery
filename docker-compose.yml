@@ -1,6 +1,21 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: image_gallery
+      POSTGRES_USER: image_user
+      POSTGRES_PASSWORD: image_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U image_user -d image_gallery"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   # Redis for job queue
   redis:
     image: redis:7-alpine
@@ -50,7 +65,15 @@ services:
       - MINIO_BUCKET=images
       - MAX_FILE_SIZE=10485760
       - MAX_FILES_PER_REQUEST=10
+      - DB_CLIENT=sqlite
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=image_user
+      - POSTGRES_PASSWORD=image_pass
+      - POSTGRES_DB=image_gallery
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       minio:
@@ -82,6 +105,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
     restart: unless-stopped
 
   # Frontend
@@ -104,3 +129,4 @@ volumes:
   redis_data:
   minio_data:
   uploads_data:
+  pg_data:
