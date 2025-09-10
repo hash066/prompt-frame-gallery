@@ -11,6 +11,7 @@ const fsp = require('fs').promises
 const { v4: uuidv4 } = require('uuid')
 const sharp = require('sharp')
 const Minio = require('minio')
+const cloudinary = require('cloudinary').v2
 const Queue = require('bull')
 const Redis = require('redis')
 const Database = require('./database')
@@ -52,10 +53,25 @@ let imageProcessingQueue
 const app = express()
 const PORT = process.env.PORT || 3001
 
+// Configure Cloudinary (optional; only used if creds provided)
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+  })
+}
+
 // Middleware
-app.use(helmet())
+app.use(helmet({
+  // Allow other origins (e.g., frontend on a different port) to load image responses
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // Avoid COEP/COOP issues for simple asset/API usage
+  crossOriginEmbedderPolicy: false
+}))
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  // Reflect request origin in dev to allow Vite/Next ports
+  origin: (origin, callback) => callback(null, true),
   credentials: true
 }))
 
@@ -79,7 +95,7 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Ensure upload directories exist
-const uploadDir = '/app/uploads'
+const uploadDir = path.join(__dirname, '..', 'uploads')
 const tempDir = path.join(uploadDir, 'temp')
 fs.ensureDirSync(uploadDir)
 fs.ensureDirSync(tempDir)
@@ -376,6 +392,51 @@ app.post('/api/images', upload.array('images', 10), async (req, res) => {
           } catch (cleanupError) {
             logger.error('Error cleaning up temp file:', cleanupError)
           }
+        } else {
+          // Fallback: For SQLite without queue, process directly
+          logger.info(`Processing image directly (no queue available): ${imageId}`)
+          
+          try {
+            // Create thumbnails directory
+            const thumbnailsDir = path.join(uploadDir, 'thumbnails')
+            const originalsDir = path.join(uploadDir, 'originals')
+            await fs.ensureDir(thumbnailsDir)
+            await fs.ensureDir(originalsDir)
+            
+            // Create thumbnail
+            const thumbnailPath = path.join(thumbnailsDir, `${imageId}.jpg`)
+            await sharp(file.path)
+              .resize(200, 200, { fit: 'cover', position: 'center' })
+              .jpeg({ quality: 85 })
+              .toFile(thumbnailPath)
+            
+            // Copy original to originals folder
+            const originalPath = path.join(originalsDir, `${imageId}.${metadata.format}`)
+            await fs.copy(file.path, originalPath)
+            
+            // Update the image record with proper paths
+            await database.updateImageAfterProcessing(imageId, {
+              imageId,
+              originalName: file.originalname,
+              mimeType: file.mimetype,
+              width: metadata.width,
+              height: metadata.height,
+              format: metadata.format,
+              minio_path: `originals/${imageId}.${metadata.format}`,
+              thumbnail_path: `thumbnails/${imageId}.jpg`
+            })
+            await database.updateImageStatus(imageId, 'completed', 100)
+            
+            // Clean up temp file
+            try {
+              await fs.remove(file.path)
+            } catch (cleanupError) {
+              logger.error('Error cleaning up temp file:', cleanupError)
+            }
+          } catch (error) {
+            logger.error(`Error processing image ${imageId}:`, error)
+            await database.updateImageStatus(imageId, 'failed', 0, error.message)
+          }
         }
         
         results.push({
@@ -409,6 +470,24 @@ app.post('/api/images', upload.array('images', 10), async (req, res) => {
   } catch (error) {
     logger.error('Upload error:', error)
     res.status(500).json({ error: 'Upload failed' })
+  }
+})
+
+// Cloudinary single-file upload endpoint (bypasses queue/minio)
+app.post('/api/upload-cloudinary', upload.single('file'), async (req, res) => {
+  try {
+    if (!process.env.CLOUDINARY_CLOUD_NAME) {
+      return res.status(400).json({ error: 'Cloudinary not configured' })
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' })
+    }
+    const result = await cloudinary.uploader.upload(req.file.path)
+    try { await fs.remove(req.file.path) } catch {}
+    res.json({ url: result.secure_url, public_id: result.public_id })
+  } catch (error) {
+    logger.error('Cloudinary upload failed:', error)
+    res.status(500).json({ error: 'Cloudinary upload failed' })
   }
 })
 
@@ -560,25 +639,99 @@ app.get('/api/images/:id/download', async (req, res) => {
       return res.status(400).json({ error: 'Invalid variant' })
     }
 
+    // If the variant file is not yet available but the image is still processing,
+    // stream from the temp file as a fallback (and generate a thumbnail on the fly).
     if (!objectKey) {
+      if (image.status === 'processing' && image.temp_path && await fs.pathExists(image.temp_path)) {
+        try {
+          if (variant === 'thumbnail') {
+            const stream = fs.createReadStream(image.temp_path)
+            res.type('image/jpeg')
+            stream
+              .pipe(sharp().resize(200, 200, { fit: 'cover', position: 'center' }).jpeg({ quality: 85 }))
+              .pipe(res)
+            return
+          } else if (variant === 'original') {
+            res.type(`image/${image.format || 'jpeg'}`)
+            fs.createReadStream(image.temp_path).pipe(res)
+            return
+          }
+        } catch (fallbackError) {
+          logger.error('Error streaming temp file fallback:', fallbackError)
+        }
+      }
+
+      // Heuristic fallback: try conventional MinIO paths even if DB not updated yet
+      try {
+        if (minioClient) {
+          if (variant === 'thumbnail') {
+            const inferredThumb = `images/${id}/thumbnails/thumbnail.jpg`
+            try {
+              await minioClient.statObject(MINIO_BUCKET, inferredThumb)
+              res.setHeader('Cache-Control', 'public, max-age=600')
+              return minioClient.getObject(MINIO_BUCKET, inferredThumb, (err, stream) => {
+                if (err) return res.status(404).json({ error: 'Variant not available' })
+                res.type('image/jpeg')
+                stream.pipe(res)
+              })
+            } catch {}
+          } else if (variant === 'original') {
+            // Find any raw object under images/<id>/raw/
+            const prefix = `images/${id}/raw/`
+            const objects = []
+            const stream = minioClient.listObjectsV2(MINIO_BUCKET, prefix, true)
+            await new Promise((resolve) => {
+              stream.on('data', obj => { if (obj && obj.name) objects.push(obj.name) })
+              stream.on('end', resolve)
+              stream.on('error', resolve)
+            })
+            if (objects.length > 0) {
+              const key = objects[0]
+              res.setHeader('Cache-Control', 'public, max-age=600')
+              return minioClient.getObject(MINIO_BUCKET, key, (err, stream) => {
+                if (err) return res.status(404).json({ error: 'Variant not available' })
+                res.type('image')
+                stream.pipe(res)
+              })
+            }
+          }
+        }
+      } catch (fallbackErr) {
+        logger.warn('Heuristic storage fallback failed:', fallbackErr)
+      }
+
       return res.status(404).json({ error: 'Variant not available' })
     }
 
     try {
-      const stat = await minioClient.statObject(MINIO_BUCKET, objectKey)
-      res.setHeader('Content-Type', stat.metaData?.['content-type'] || 'image/jpeg')
-      res.setHeader('Content-Length', stat.size)
-      res.setHeader('Cache-Control', 'public, max-age=31536000')
-      minioClient.getObject(MINIO_BUCKET, objectKey, (err, objStream) => {
-        if (err) {
-          logger.error('Error streaming from MinIO:', err)
-          if (err.code === 'NoSuchKey') {
-            return res.status(404).json({ error: 'File not found in storage' })
+      if (minioClient) {
+        const stat = await minioClient.statObject(MINIO_BUCKET, objectKey)
+        res.setHeader('Content-Type', stat.metaData?.['content-type'] || 'image/jpeg')
+        res.setHeader('Content-Length', stat.size)
+        res.setHeader('Cache-Control', 'public, max-age=31536000')
+        minioClient.getObject(MINIO_BUCKET, objectKey, (err, objStream) => {
+          if (err) {
+            logger.error('Error streaming from MinIO:', err)
+            if (err.code === 'NoSuchKey') {
+              return res.status(404).json({ error: 'File not found in storage' })
+            }
+            return res.status(500).json({ error: 'Download failed' })
           }
-          return res.status(500).json({ error: 'Download failed' })
+          objStream.pipe(res)
+        })
+      } else {
+        // Fallback to local file system
+        const filePath = path.join(uploadDir, objectKey)
+        if (await fs.pathExists(filePath)) {
+          const stat = await fs.stat(filePath)
+          res.setHeader('Content-Type', variant === 'thumbnail' ? 'image/jpeg' : `image/${image.format}`)
+          res.setHeader('Content-Length', stat.size)
+          res.setHeader('Cache-Control', 'public, max-age=31536000')
+          fs.createReadStream(filePath).pipe(res)
+        } else {
+          return res.status(404).json({ error: 'File not found in storage' })
         }
-        objStream.pipe(res)
-      })
+      }
     } catch (minioError) {
       logger.error('MinIO error:', minioError)
       if (image.status === 'processing' && image.temp_path && await fs.pathExists(image.temp_path)) {

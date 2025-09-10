@@ -31,9 +31,11 @@ export default function Gallery() {
   const allTags = Array.from(new Set(items.flatMap(img => img.tags))).slice(0, 8);
 
   const filteredImages = items.filter(img => {
-    const matchesSearch = img.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         img.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+    const lowerQuery = searchQuery.toLowerCase()
+    const promptText = (img.prompt ?? '').toLowerCase()
+    const matchesSearch = img.title.toLowerCase().includes(lowerQuery) ||
+                         promptText.includes(lowerQuery) ||
+                         img.tags.some(tag => tag.toLowerCase().includes(lowerQuery));
     
     const matchesTag = !selectedTag || img.tags.includes(selectedTag);
     
@@ -137,6 +139,12 @@ export default function Gallery() {
                 src={image.url}
                 alt={image.title}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement
+                  if (el.src !== '/placeholder.svg') {
+                    el.src = '/placeholder.svg'
+                  }
+                }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="absolute bottom-4 left-4 right-4 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 opacity-0 group-hover:opacity-100">

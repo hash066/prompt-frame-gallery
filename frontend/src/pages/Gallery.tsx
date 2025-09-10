@@ -31,9 +31,11 @@ export default function Gallery() {
   const allTags = Array.from(new Set(items.flatMap(img => img.tags))).slice(0, 8);
 
   const filteredImages = items.filter(img => {
-    const matchesSearch = img.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         img.prompt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         img.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+    const lowerQuery = searchQuery.toLowerCase()
+    const promptText = (img.prompt ?? '').toLowerCase()
+    const matchesSearch = img.title.toLowerCase().includes(lowerQuery) ||
+                         promptText.includes(lowerQuery) ||
+                         img.tags.some(tag => tag.toLowerCase().includes(lowerQuery));
     
     const matchesTag = !selectedTag || img.tags.includes(selectedTag);
     

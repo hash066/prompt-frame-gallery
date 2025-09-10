@@ -583,3 +583,24 @@
 {"level":"info","message":"Database initialized successfully","timestamp":"2025-09-09T20:47:53.160Z"}
 {"level":"info","message":"Redis connection initialized successfully","timestamp":"2025-09-09T20:47:53.201Z"}
 {"level":"info","message":"MinIO connection initialized successfully","timestamp":"2025-09-09T20:47:53.274Z"}
+{"level":"info","message":"Database initialized successfully","timestamp":"2025-09-10T05:14:13.666Z"}
+{"level":"warn","message":"Redis not available, queue processing disabled","timestamp":"2025-09-10T05:14:13.686Z"}
+{"level":"warn","message":"MinIO not available, object storage disabled","timestamp":"2025-09-10T05:14:19.724Z"}
+{"level":"info","message":"Queue initialization skipped (Redis not available)","timestamp":"2025-09-10T05:14:19.724Z"}
+{"level":"info","message":"Backend uploader server running on port 3001","timestamp":"2025-09-10T05:14:19.727Z"}
+{"level":"info","message":"Environment: development","timestamp":"2025-09-10T05:14:19.727Z"}
+{"level":"info","message":"Server is ready to accept requests","timestamp":"2025-09-10T05:14:19.728Z"}
+{"level":"info","message":"Database initialized successfully","timestamp":"2025-09-10T05:14:26.916Z"}
+{"level":"warn","message":"Redis not available, queue processing disabled","timestamp":"2025-09-10T05:14:26.940Z"}
+{"level":"warn","message":"MinIO not available, object storage disabled","timestamp":"2025-09-10T05:14:32.983Z"}
+{"level":"info","message":"Image queued for processing: 7a7c2b0e-af16-4972-bbcc-d9ad3a37c998","timestamp":"2025-09-10T05:19:31.961Z"}
+{"level":"info","message":"Image queued for processing: 99f530b8-6d89-4a9d-a626-d44157091c6d","timestamp":"2025-09-10T05:19:33.734Z"}
+{"level":"info","message":"Image queued for processing: 5048d6bb-86c5-4217-af4e-20ffdd4c07de","timestamp":"2025-09-10T05:19:34.775Z"}
+{"level":"info","message":"Database initialized successfully","timestamp":"2025-09-10T05:26:46.826Z"}
+{"level":"warn","message":"Redis not available, queue processing disabled","timestamp":"2025-09-10T05:26:46.846Z"}
+{"level":"warn","message":"MinIO not available, object storage disabled","timestamp":"2025-09-10T05:26:52.899Z"}
+{"level":"info","message":"Queue initialization skipped (Redis not available)","timestamp":"2025-09-10T05:26:52.900Z"}
+{"level":"info","message":"Backend uploader server running on port 3001","timestamp":"2025-09-10T05:26:52.904Z"}
+{"level":"info","message":"Environment: development","timestamp":"2025-09-10T05:26:52.905Z"}
+{"level":"info","message":"Server is ready to accept requests","timestamp":"2025-09-10T05:26:52.905Z"}
+{"level":"info","message":"SIGINT received, shutting down gracefully","timestamp":"2025-09-10T05:28:10.262Z"}
