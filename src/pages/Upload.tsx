@@ -69,6 +69,12 @@ export default function Upload() {
               className="w-full h-48 object-cover rounded"
               src={`${API_URL}/api/images/${r.imageId}/download?variant=thumbnail`}
               alt={r.filename}
+              onError={(e) => {
+                const el = e.currentTarget as HTMLImageElement
+                if (el.src !== '/placeholder.svg') {
+                  el.src = '/placeholder.svg'
+                }
+              }}
             />
             <div className="mt-2 text-sm text-muted-foreground">{r.filename}</div>
           </div>

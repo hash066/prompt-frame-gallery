@@ -157,7 +157,8 @@ const PROCESSING_CONFIG = {
     webp: 80,
     avif: 70
   },
-  formats: ['jpeg', 'webp', 'avif']
+  // Disable AVIF to avoid libvips heif dependency issues in container
+  formats: ['jpeg', 'webp']
 }
 
 // Image processing job
@@ -261,23 +262,10 @@ imageProcessingQueue.process('processImage', Number.isFinite(workerConcurrency) 
           'Content-Type': 'image/webp'
         })
         
-        // Generate AVIF version
-        const avifBuffer = await sharp(imageBuffer)
-          .resize(size, null, {
-            withoutEnlargement: true,
-            fit: 'inside'
-          })
-          .avif({ quality: PROCESSING_CONFIG.quality.avif })
-          .toBuffer()
-        
-        await minioClient.putObject(BUCKET_NAME, `${responsivePath}.avif`, avifBuffer, {
-          'Content-Type': 'image/avif'
-        })
-        
+        // Note: AVIF disabled due to missing heif encoder in base image
         responsivePaths[size] = {
           jpeg: `${responsivePath}.jpg`,
-          webp: `${responsivePath}.webp`,
-          avif: `${responsivePath}.avif`
+          webp: `${responsivePath}.webp`
         }
         
         logger.info(`Responsive size ${size}w generated`)

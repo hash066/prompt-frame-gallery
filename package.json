@@ -33,7 +33,11 @@
   },
   "workspaces": [
     "frontend",
-    "backendUploader", 
+    "backendUploader",
     "processing-storage"
-  ]
+  ],
+  "dependencies": {
+    "cloudinary": "^2.7.0",
+    "multer": "^2.0.2"
+  }
 }
