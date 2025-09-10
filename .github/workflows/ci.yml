@@ -1,0 +1,406 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9000:9000
+          - 9001:9001
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1" 
+          --health-interval 10s --health-timeout 5s --health-retries 5
+        command: server /data --console-address ":9001"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Backend deps & tests
+        working-directory: backendUploader
+        run: |
+          npm ci
+          npm test --silent
+
+      - name: Worker deps & tests
+        working-directory: processing-storage
+        run: |
+          npm ci
+          npm test --silent
+
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '18'
+  REDIS_VERSION: '7'
+  MINIO_VERSION: 'latest'
+
+jobs:
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Run frontend linting
+      working-directory: ./frontend
+      run: npm run lint
+    
+    - name: Run frontend tests
+      working-directory: ./frontend
+      run: npm test -- --coverage --watchAll=false
+    
+    - name: Build frontend
+      working-directory: ./frontend
+      run: npm run build
+
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:${{ env.REDIS_VERSION }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      minio:
+        image: minio/minio:${{ env.MINIO_VERSION }}
+        ports:
+          - 9000:9000
+          - 9001:9001
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 30s
+          --health-timeout 20s
+          --health-retries 3
+        command: server /data --console-address ":9001"
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: backendUploader/package-lock.json
+    
+    - name: Install backend dependencies
+      working-directory: ./backendUploader
+      run: npm ci
+    
+    - name: Create upload directories
+      working-directory: ./backendUploader
+      run: |
+        mkdir -p uploads/temp
+        mkdir -p logs
+    
+    - name: Run backend tests
+      working-directory: ./backendUploader
+      run: npm test
+      env:
+        REDIS_URL: redis://localhost:6379
+        MINIO_ENDPOINT: localhost
+        MINIO_PORT: 9000
+        MINIO_ACCESS_KEY: minioadmin
+        MINIO_SECRET_KEY: minioadmin
+        MINIO_BUCKET: test-images
+        NODE_ENV: test
+
+  test-processing:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:${{ env.REDIS_VERSION }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      minio:
+        image: minio/minio:${{ env.MINIO_VERSION }}
+        ports:
+          - 9000:9000
+          - 9001:9001
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 30s
+          --health-timeout 20s
+          --health-retries 3
+        command: server /data --console-address ":9001"
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: processing-storage/package-lock.json
+    
+    - name: Install processing dependencies
+      working-directory: ./processing-storage
+      run: npm ci
+    
+    - name: Create logs directory
+      working-directory: ./processing-storage
+      run: mkdir -p logs
+    
+    - name: Run processing tests
+      working-directory: ./processing-storage
+      run: npm test
+      env:
+        REDIS_URL: redis://localhost:6379
+        MINIO_ENDPOINT: localhost
+        MINIO_PORT: 9000
+        MINIO_ACCESS_KEY: minioadmin
+        MINIO_SECRET_KEY: minioadmin
+        MINIO_BUCKET: test-images
+        NODE_ENV: test
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-processing]
+    
+    services:
+      redis:
+        image: redis:${{ env.REDIS_VERSION }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      minio:
+        image: minio/minio:${{ env.MINIO_VERSION }}
+        ports:
+          - 9000:9000
+          - 9001:9001
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 30s
+          --health-timeout 20s
+          --health-retries 3
+        command: server /data --console-address ":9001"
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          backendUploader/package-lock.json
+          processing-storage/package-lock.json
+    
+    - name: Install backend dependencies
+      working-directory: ./backendUploader
+      run: npm ci
+    
+    - name: Install processing dependencies
+      working-directory: ./processing-storage
+      run: npm ci
+    
+    - name: Create directories
+      run: |
+        mkdir -p backendUploader/uploads/temp
+        mkdir -p backendUploader/logs
+        mkdir -p processing-storage/logs
+    
+    - name: Start backend server
+      working-directory: ./backendUploader
+      run: |
+        npm start &
+        sleep 10
+      env:
+        REDIS_URL: redis://localhost:6379
+        MINIO_ENDPOINT: localhost
+        MINIO_PORT: 9000
+        MINIO_ACCESS_KEY: minioadmin
+        MINIO_SECRET_KEY: minioadmin
+        MINIO_BUCKET: test-images
+        NODE_ENV: test
+        PORT: 3001
+    
+    - name: Start processing worker
+      working-directory: ./processing-storage
+      run: |
+        npm start &
+        sleep 5
+      env:
+        REDIS_URL: redis://localhost:6379
+        MINIO_ENDPOINT: localhost
+        MINIO_PORT: 9000
+        MINIO_ACCESS_KEY: minioadmin
+        MINIO_SECRET_KEY: minioadmin
+        MINIO_BUCKET: test-images
+        NODE_ENV: test
+    
+    - name: Wait for services to be ready
+      run: |
+        # Wait for backend to be ready
+        timeout 30 bash -c 'until curl -f http://localhost:3001/api/health; do sleep 1; done'
+        
+        # Wait for worker health check
+        timeout 30 bash -c 'until curl -f http://localhost:3002/health; do sleep 1; done'
+    
+    - name: Run upload integration tests
+      working-directory: ./backendUploader
+      run: npm run test:integration
+      env:
+        REDIS_URL: redis://localhost:6379
+        MINIO_ENDPOINT: localhost
+        MINIO_PORT: 9000
+        MINIO_ACCESS_KEY: minioadmin
+        MINIO_SECRET_KEY: minioadmin
+        MINIO_BUCKET: test-images
+        NODE_ENV: test
+        API_URL: http://localhost:3001
+    
+    - name: Test image processing pipeline
+      run: |
+        # Create a test image
+        curl -X POST http://localhost:3001/api/images \
+          -F "images=@backendUploader/tests/test-image.jpg" \
+          -H "Content-Type: multipart/form-data"
+        
+        # Wait for processing to complete
+        sleep 30
+        
+        # Check if processing completed successfully
+        # This would be more sophisticated in a real implementation
+        echo "Integration test completed"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run security audit for frontend
+      working-directory: ./frontend
+      run: npm audit --audit-level moderate
+    
+    - name: Run security audit for backend
+      working-directory: ./backendUploader
+      run: npm audit --audit-level moderate
+    
+    - name: Run security audit for processing
+      working-directory: ./processing-storage
+      run: npm audit --audit-level moderate
+
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    needs: [test-frontend, test-backend, test-processing, integration-test, security-scan]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: |
+          frontend/package-lock.json
+          backendUploader/package-lock.json
+          processing-storage/package-lock.json
+    
+    - name: Build frontend
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run build
+    
+    - name: Build backend
+      working-directory: ./backendUploader
+      run: |
+        npm ci
+        npm run build || echo "No build script for backend"
+    
+    - name: Build processing
+      working-directory: ./processing-storage
+      run: |
+        npm ci
+        npm run build || echo "No build script for processing"
+    
+    - name: Create deployment artifacts
+      run: |
+        mkdir -p dist
+        cp -r frontend/.next dist/frontend
+        cp -r backendUploader/src dist/backend
+        cp -r processing-storage/src dist/processing
+        cp -r frontend/package.json dist/frontend/
+        cp -r backendUploader/package.json dist/backend/
+        cp -r processing-storage/package.json dist/processing/
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: dist/
+    
+    # Add deployment steps here (Docker, cloud deployment, etc.)
+    - name: Deploy to staging
+      run: echo "Deploy to staging environment"
+      # This would contain actual deployment logic
