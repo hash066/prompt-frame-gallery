@@ -4,7 +4,8 @@
   "description": "Backend upload API for image gallery application",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node server.js",
+    "build": "echo 'No build step required'",
     "dev": "nodemon src/server.js",
     "test": "jest",
     "test:watch": "jest --watch",

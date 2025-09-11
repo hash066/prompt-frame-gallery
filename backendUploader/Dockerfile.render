@@ -1,3 +1,4 @@
+# Backend-only Dockerfile for Render deployment
 FROM node:18-alpine
 
 WORKDIR /app
@@ -14,7 +15,7 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p logs uploads/temp
 
-# Expose backend port
+# Expose port
 EXPOSE 3001
 
 # Health check
@@ -23,3 +24,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Start the server
 CMD ["node", "src/server.js"]
+
+

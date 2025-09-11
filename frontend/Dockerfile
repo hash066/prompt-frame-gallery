@@ -2,17 +2,24 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dependencies
+# Copy package files
 COPY package.json package-lock.json* ./
-RUN npm ci
 
-# Copy source
+# Install dependencies (use ci if lockfile exists, otherwise install)
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+# Copy source code
 COPY . .
 
-# Build vite app
+# Build the application
 RUN npm run build
 
-# Serve with vite preview
+# Expose port
 EXPOSE 3000
-ENV HOST 0.0.0.0
+
+# Set environment variables
+ENV HOST=0.0.0.0
+ENV PORT=3000
+
+# Start the application
 CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]

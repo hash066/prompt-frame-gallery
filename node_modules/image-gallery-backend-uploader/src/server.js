@@ -51,7 +51,7 @@ let imageProcessingQueue
 
 // Initialize Express app
 const app = express()
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 10000
 
 // Configure Cloudinary (optional; only used if creds provided)
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
