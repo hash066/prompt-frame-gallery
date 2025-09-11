@@ -56,10 +56,6 @@ MINIO_BUCKET=images
 MINIO_USE_SSL=true
 ```
 
-#### **Logging Configuration**
-```
-LOG_LEVEL=info
-```
 
 ---
 
@@ -121,7 +117,6 @@ PORT=3001
 DB_CLIENT=sqlite
 MAX_FILE_SIZE=10485760
 MAX_FILES_PER_REQUEST=10
-LOG_LEVEL=info
 ```
 
 ### **Frontend Environment Variables (Minimum Required)**
@@ -151,7 +146,6 @@ MAX_FILES_PER_REQUEST=10
 CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
 CLOUDINARY_API_KEY=your_cloudinary_api_key
 CLOUDINARY_API_SECRET=your_cloudinary_api_secret
-LOG_LEVEL=info
 ```
 
 ### **Frontend Environment Variables (Recommended)**
