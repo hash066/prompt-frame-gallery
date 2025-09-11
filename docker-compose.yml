@@ -82,7 +82,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - uploads_data:/app/uploads
+      - ./backendUploader/uploads:/app/uploads
     restart: unless-stopped
 
   # Image Processing Worker
@@ -109,7 +109,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - uploads_data:/app/uploads
+      - ./backendUploader/uploads:/app/uploads
     restart: unless-stopped
 
   # Frontend
@@ -131,5 +131,4 @@ services:
 volumes:
   redis_data:
   minio_data:
-  uploads_data:
   pg_data:
