@@ -11,7 +11,7 @@ process.env.NODE_ENV = 'production';
 process.env.DB_CLIENT = process.env.DB_CLIENT || 'sqlite';
 
 // Use Railway's PORT environment variable
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // PostgreSQL configuration (if using PostgreSQL)
 if (process.env.DATABASE_URL) {
@@ -64,7 +64,8 @@ const backendEnv = {
   FRONTEND_STATIC_PATH: frontendPath
 };
 
-const backend = spawn('node', ['backendUploader/src/server.js'], {
+// In the Railway image the backend is copied to ./backend
+const backend = spawn('node', ['backend/src/server.js'], {
   stdio: 'inherit',
   env: backendEnv
 });
