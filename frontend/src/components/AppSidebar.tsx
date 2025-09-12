@@ -13,7 +13,7 @@ import {
   Upload,
   Brain
 } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -33,7 +33,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const mainNavItems = [
   { title: "Gallery", url: "/", icon: Home },
   { title: "Generate", url: "/generate", icon: Sparkles },
-  { title: "Classify", url: "/classify", icon: Brain },
+  { title: "Image Understanding", url: "/classify", icon: Brain },
   { title: "My Images", url: "/my-images", icon: Image },
   { title: "Upload", url: "/upload", icon: Upload },
   { title: "Albums", url: "/albums", icon: Folder },
@@ -51,6 +51,7 @@ export function AppSidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const collapsed = state === "collapsed";
+  const navigate = useNavigate();
 
   const isActive = (path: string) => currentPath === path;
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
@@ -126,7 +127,10 @@ export function AppSidebar() {
             </SidebarMenuItem>
           ))}
           <SidebarMenuItem>
-            <SidebarMenuButton className="rounded-lg hover:bg-destructive/10 hover:text-destructive transition-smooth">
+            <SidebarMenuButton
+              className="rounded-lg hover:bg-destructive/10 hover:text-destructive transition-smooth"
+              onClick={() => navigate('/login')}
+            >
               <LogOut className="w-5 h-5" />
               {!collapsed && <span className="font-medium">Sign Out</span>}
             </SidebarMenuButton>

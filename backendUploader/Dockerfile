@@ -1,4 +1,3 @@
-FROM node:18-bullseye-slim
 
 WORKDIR /app
 
@@ -15,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     libvips-dev \
   && rm -rf /var/lib/apt/lists/*
 RUN npm install --omit=dev
+
 # Rebuild native modules for the container architecture
 RUN npm rebuild
 
