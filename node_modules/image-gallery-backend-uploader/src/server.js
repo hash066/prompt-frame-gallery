@@ -295,15 +295,94 @@ app.get('/api/health', async (req, res) => {
   }
 })
 
+// Simple auth endpoints
+// WARNING: This is a minimal demo auth with plaintext password storage for local/demo use only.
+// Do NOT use in production without hashing (bcrypt), sessions/JWTs, and proper validation.
+
+// Seed admin account from env or defaults (username & password = 'nexel')
+app.post('/api/auth/seed-admin', async (req, res) => {
+  try {
+    const username = process.env.ADMIN_USERNAME || 'nexel'
+    const password = process.env.ADMIN_PASSWORD || 'nexel'
+    const existing = await database.getUserByUsername(username)
+    if (!existing) {
+      await database.createUser({ id: uuidv4(), username, password, role: 'admin' })
+    }
+    res.json({ success: true })
+  } catch (err) {
+    logger.error('Seed admin failed:', err)
+    res.status(500).json({ error: 'Failed to seed admin' })
+  }
+})
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password } = req.body || {}
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' })
+    const existing = await database.getUserByUsername(username)
+    if (existing) return res.status(409).json({ error: 'username already exists' })
+    await database.createUser({ id: uuidv4(), username, password, role: 'creator' })
+    res.json({ success: true })
+  } catch (err) {
+    logger.error('Register failed:', err)
+    res.status(500).json({ error: 'registration failed' })
+  }
+})
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body || {}
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' })
+    const user = await database.getUserByUsername(username)
+    if (!user || user.password !== password) return res.status(401).json({ error: 'invalid credentials' })
+    res.json({ success: true, role: user.role })
+  } catch (err) {
+    logger.error('Login failed:', err)
+    res.status(500).json({ error: 'login failed' })
+  }
+})
+
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const { username, password } = req.query
+    // Basic guard: require admin creds for this endpoint via query for demo simplicity
+    const adminUser = await database.getUserByUsername(username)
+    if (!adminUser || adminUser.password !== password || adminUser.role !== 'admin') {
+      return res.status(401).json({ error: 'unauthorized' })
+    }
+    const users = await database.listUsers()
+    res.json(users)
+  } catch (err) {
+    logger.error('List users failed:', err)
+    res.status(500).json({ error: 'failed to list users' })
+  }
+})
+
+app.delete('/api/admin/users/:username', async (req, res) => {
+  try {
+    const { adminUser, adminPass } = req.query
+    const admin = await database.getUserByUsername(adminUser)
+    if (!admin || admin.password !== adminPass || admin.role !== 'admin') {
+      return res.status(401).json({ error: 'unauthorized' })
+    }
+    const count = await database.deleteUserByUsername(req.params.username)
+    res.json({ success: true, deleted: count })
+  } catch (err) {
+    logger.error('Delete user failed:', err)
+    res.status(500).json({ error: 'failed to delete user' })
+  }
+})
+
 // Get all images
 app.get('/api/images', async (req, res) => {
   try {
-    const { page = 1, limit = 20, search, album, tags, sortBy = 'uploaded_at', sortOrder = 'desc' } = req.query
+    const { page = 1, limit = 20, search, album, tags, sortBy = 'uploaded_at', sortOrder = 'desc', owner } = req.query
     
     const filters = {
       search,
       album,
-      status: req.query.status
+      status: req.query.status,
+      owner
     }
     
     const offset = (page - 1) * limit
@@ -372,7 +451,8 @@ app.post('/api/images', upload.array('images', 10), async (req, res) => {
           metadata: {
             format: metadata.format,
             channels: metadata.channels,
-            density: metadata.density
+            density: metadata.density,
+            owner: (req.headers['x-user'] || '').toString() || null
           }
         }
         
