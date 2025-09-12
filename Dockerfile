@@ -1,15 +1,16 @@
 # Simplified single-stage build for Railway
-FROM node:18-alpine
+FROM node:18-slim
 
 # Install system dependencies
-RUN apk add --no-cache \
-    vips-dev \
+RUN apt-get update && apt-get install -y \
+    libvips-dev \
     python3 \
     make \
     g++ \
-    sqlite \
-    && addgroup -g 1001 -S nodejs \
-    && adduser -S nodejs -u 1001
+    sqlite3 \
+    && groupadd --gid 1001 nodejs \
+    && useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -28,7 +29,13 @@ RUN npm install
 
 # Install and build frontend
 WORKDIR /app/frontend
-RUN npm install --include=dev
+# Copy package files first
+COPY frontend/package*.json ./
+# Fix npm optional deps bug by removing lock file and reinstalling
+RUN rm -f package-lock.json && \
+    npm cache clean --force && \
+    npm install --include=dev
+# Copy rest of frontend code
 COPY frontend/ .
 RUN npm run build
 
