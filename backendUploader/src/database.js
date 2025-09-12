@@ -115,9 +115,13 @@ class Database {
           updated_at TIMESTAMPTZ DEFAULT NOW()
         )
       `
+
       await this.pg.query(createImagesTable)
       await this.pg.query(createImageBlobsTable)
       await this.pg.query(createImageStatusTable)
+
+
+
       logger.info('PostgreSQL tables created/verified')
       return
     }
@@ -158,6 +162,15 @@ class Database {
           FOREIGN KEY (image_id) REFERENCES images (id) ON DELETE CASCADE
         )
       `
+      const createUsersTable = `
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'creator',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `
 
       this.db.serialize(() => {
         this.db.run(createImagesTable, (err) => {
@@ -176,8 +189,91 @@ class Database {
             return
           }
           logger.info('Image status table created/verified')
-          resolve()
+          this.db.run(createUsersTable, (err) => {
+            if (err) {
+              logger.error('Error creating users table:', err)
+              reject(err)
+              return
+            }
+            logger.info('Users table created/verified')
+            resolve()
+          })
         })
+      })
+    })
+  }
+
+  async createUser(user) {
+    const { id, username, password, role } = user
+    if (this.client === 'postgres') {
+      const sql = `
+        INSERT INTO users (id, username, password, role)
+        VALUES ($1,$2,$3,$4)
+        ON CONFLICT (username) DO NOTHING
+      `
+      const result = await this.pg.query(sql, [id, username, password, role || 'creator'])
+      return result.rowCount
+    }
+    return new Promise((resolve, reject) => {
+      const sql = `INSERT OR IGNORE INTO users (id, username, password, role) VALUES (?,?,?,?)`
+      this.db.run(sql, [id, username, password, role || 'creator'], function(err){
+        if (err) {
+          logger.error('Error creating user:', err)
+          reject(err)
+        } else {
+          resolve(this.changes)
+        }
+      })
+    })
+  }
+
+  async getUserByUsername(username) {
+    if (this.client === 'postgres') {
+      const { rows } = await this.pg.query('SELECT * FROM users WHERE username=$1', [username])
+      return rows[0] || null
+    }
+    return new Promise((resolve, reject) => {
+      this.db.get('SELECT * FROM users WHERE username = ?', [username], (err, row) => {
+        if (err) {
+          logger.error('Error fetching user:', err)
+          reject(err)
+        } else {
+          resolve(row || null)
+        }
+      })
+    })
+  }
+
+  async listUsers() {
+    if (this.client === 'postgres') {
+      const { rows } = await this.pg.query('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC')
+      return rows
+    }
+    return new Promise((resolve, reject) => {
+      this.db.all('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC', [], (err, rows) => {
+        if (err) {
+          logger.error('Error listing users:', err)
+          reject(err)
+        } else {
+          resolve(rows)
+        }
+      })
+    })
+  }
+
+  async deleteUserByUsername(username) {
+    if (this.client === 'postgres') {
+      const result = await this.pg.query('DELETE FROM users WHERE username=$1', [username])
+      return result.rowCount
+    }
+    return new Promise((resolve, reject) => {
+      this.db.run('DELETE FROM users WHERE username = ?', [username], function(err){
+        if (err) {
+          logger.error('Error deleting user:', err)
+          reject(err)
+        } else {
+          resolve(this.changes)
+        }
       })
     })
   }
@@ -489,6 +585,11 @@ class Database {
       if (filters.album) {
         sql += ' AND metadata LIKE ?'
         params.push(`%"album":"${filters.album}"%`)
+      }
+
+      if (filters.owner) {
+        sql += ' AND metadata LIKE ?'
+        params.push(`%"owner":"${filters.owner}"%`)
       }
 
       if (filters.status) {
