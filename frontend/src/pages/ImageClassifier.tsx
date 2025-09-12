@@ -1,90 +1,43 @@
-import { useEffect, useRef, useState } from "react";
-
-// Lazy import to keep initial bundle smaller; Vite will code-split this chunk
-let mobilenetModelLoader: any;
-let tfLoader: any;
+import { useRef, useState } from "react";
+import { classifyImage, type Classification } from "@/lib/api";
 
 const ImageClassifier = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [modelReady, setModelReady] = useState(false);
-  const [prediction, setPrediction] = useState<{ className: string; probability: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [labels, setLabels] = useState<Classification[] | null>(null);
+  const [results, setResults] = useState<null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const modelRef = useRef<any>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        setIsLoading(true);
-        // Dynamic import to avoid bloating initial bundle
-        if (!tfLoader) {
-          tfLoader = () => import("@tensorflow/tfjs");
-        }
-        if (!mobilenetModelLoader) {
-          mobilenetModelLoader = () => import("@tensorflow-models/mobilenet");
-        }
-        await tfLoader();
-        const mobilenet = await mobilenetModelLoader();
-        if (cancelled) return;
-        const model = await mobilenet.load({ version: 2, alpha: 1.0 });
-        if (cancelled) return;
-        modelRef.current = model;
-        setModelReady(true);
-      } catch (e: any) {
-        setError(e?.message || "Failed to load model");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      cancelled = true;
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, []);
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPrediction(null);
+    setLabels(null);
+    setResults(null);
     setError(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
       setError("Please select an image file.");
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(f);
     setPreviewUrl(url);
+    setFile(f);
   };
 
-  const classify = async () => {
+  const run = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      setPrediction(null);
-      if (!modelRef.current) {
-        setError("Model not ready yet. Please wait a moment.");
-        return;
-      }
-      const img = imageRef.current;
-      if (!img) {
+      if (!file) {
         setError("No image selected.");
         return;
       }
-      const results = await modelRef.current.classify(img);
-      if (results && results.length > 0) {
-        const top = results[0];
-        setPrediction({ className: top.className, probability: top.probability });
-      } else {
-        setError("No prediction returned.");
-      }
+      setIsLoading(true);
+      setError(null);
+      const lbls = await classifyImage(file, 5);
+      setLabels(lbls);
     } catch (e: any) {
-      setError(e?.message || "Classification failed");
+      setError(e?.message || "Operation failed");
     } finally {
       setIsLoading(false);
     }
@@ -92,11 +45,11 @@ const ImageClassifier = () => {
 
   return (
     <div className="p-6">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <div className="bg-white/70 dark:bg-gray-900/50 backdrop-blur rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
             <h1 className="text-2xl font-bold">Image Classification</h1>
-            <p className="text-sm text-gray-500 mt-1">Runs entirely in your browser using TensorFlow.js MobileNet.</p>
+            <p className="text-sm text-gray-500 mt-1">Upload an image to get predicted labels.</p>
           </div>
           <div className="p-6 space-y-6">
             <div>
@@ -107,9 +60,6 @@ const ImageClassifier = () => {
                 onChange={onFileChange}
                 className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
               />
-              {!modelReady && (
-                <p className="text-xs text-gray-500 mt-2">Loading model… this takes a few seconds on first load.</p>
-              )}
             </div>
 
             {previewUrl && (
@@ -126,29 +76,25 @@ const ImageClassifier = () => {
                 </div>
                 <div className="w-full md:w-72">
                   <button
-                    onClick={classify}
-                    disabled={!modelReady || isLoading}
+                    onClick={run}
+                    disabled={isLoading || !file}
                     className="w-full inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isLoading ? "Classifying…" : "Classify Image"}
+                    {isLoading ? "Classifying…" : "Classify"}
                   </button>
 
                   <div className="mt-4 space-y-2">
-                    {prediction && (
+                    {labels && (
                       <div className="p-4 rounded-lg border border-green-200 bg-green-50 text-green-800 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-200">
-                        <div className="text-sm font-semibold">Top Prediction</div>
-                        <div className="mt-1 text-sm">
-                          {prediction.className}
-                        </div>
-                        <div className="mt-2 h-2 w-full bg-green-200/50 rounded">
-                          <div
-                            className="h-2 bg-green-600 rounded"
-                            style={{ width: `${Math.round(prediction.probability * 100)}%` }}
-                          />
-                        </div>
-                        <div className="mt-1 text-xs">
-                          {Math.round(prediction.probability * 1000) / 10}% confidence
-                        </div>
+                        <div className="text-sm font-semibold">Top Labels</div>
+                        <ul className="mt-2 space-y-1 text-sm">
+                          {labels.map((p, i) => (
+                            <li key={i} className="flex items-center justify-between gap-2">
+                              <span>{p.label}</span>
+                              <span className="text-xs">{Math.round(p.score * 1000) / 10}%</span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                     {error && (
@@ -163,7 +109,7 @@ const ImageClassifier = () => {
 
             {!previewUrl && (
               <div className="text-sm text-gray-500">
-                Choose an image file to see a preview and run classification.
+                Choose an image file to see a preview and get labels.
               </div>
             )}
           </div>
@@ -174,3 +120,5 @@ const ImageClassifier = () => {
 };
 
 export default ImageClassifier;
+
+
