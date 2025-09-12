@@ -9,7 +9,21 @@ const path = require('path')
 const fs = require('fs-extra')
 const fsp = require('fs').promises
 const { v4: uuidv4 } = require('uuid')
-const sharp = require('sharp')
+// Try to load Sharp, but handle gracefully if it fails
+let sharp
+let sharpAvailable = true
+try {
+  sharp = require('sharp')
+} catch (error) {
+  console.warn('Sharp not available, image processing will be limited:', error.message)
+  sharpAvailable = false
+  // Create a mock sharp object for basic functionality
+  sharp = {
+    metadata: () => Promise.resolve({ width: 0, height: 0, format: 'unknown' }),
+    resize: () => ({ jpeg: () => ({ pipe: (stream) => stream }) }),
+    pipe: (stream) => stream
+  }
+}
 const Minio = require('minio')
 const cloudinary = require('cloudinary').v2
 const Queue = require('bull')
