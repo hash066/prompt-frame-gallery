@@ -1,4 +1,3 @@
-# Simplified single-stage build for Railway
 FROM node:18-slim
 
 # Install system dependencies
@@ -8,65 +7,35 @@ RUN apt-get update && apt-get install -y \
     make \
     g++ \
     sqlite3 \
-    && groupadd --gid 1001 nodejs \
-    && useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy all package.json files first
+# Environment variables
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
+ENV NODE_ENV=production
+
+# Copy package files
 COPY package*.json ./
 COPY frontend/package*.json ./frontend/
 COPY backendUploader/package*.json ./backendUploader/
 COPY processing-storage/package*.json ./processing-storage/
 
-# Environment variables to avoid native build issues
-ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
-ENV NODE_ENV=production
-
-# Install root dependencies
+# Install all dependencies using workspaces
 RUN npm install
 
-# Install and build frontend
+# Copy source code
+COPY . .
+
+# Build frontend from the frontend directory
 WORKDIR /app/frontend
-# Copy package files first
-COPY frontend/package*.json ./
-# Fix npm optional deps bug by removing lock file and reinstalling
-RUN rm -f package-lock.json && \
-    npm cache clean --force && \
-    npm install --include=dev
-# Copy rest of frontend code
-COPY frontend/ .
 RUN npm run build
 
-# Install backend dependencies
-WORKDIR /app/backendUploader
-RUN npm install --omit=dev
-COPY backendUploader/ .
-
-# Install worker dependencies
-WORKDIR /app/processing-storage
-RUN npm install --omit=dev
-COPY processing-storage/ .
-
-# Back to root and copy remaining files
+# Go back to root
 WORKDIR /app
-COPY start-production.js ./
 
-# Create necessary directories
-RUN mkdir -p logs uploads data backendUploader/data && chown -R nodejs:nodejs /app
+# Create directories
+RUN mkdir -p logs uploads data
 
-# Copy frontend build to expected location
-RUN mkdir -p frontend/dist && cp -r frontend/dist/* frontend/dist/ 2>/dev/null || true
-
-USER nodejs
-
-# Expose port (Railway will set PORT env var)
 EXPOSE 3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 3000) + '/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
-
-# Start the application
 CMD ["node", "start-production.js"]
