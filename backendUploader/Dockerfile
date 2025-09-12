@@ -6,9 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install build tools for native modules and then dependencies
-RUN apt-get update
-RUN apt-get install -y python3 make g++
-RUN rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 python3-distutils make g++ libvips-dev && rm -rf /var/lib/apt/lists/*
 RUN npm install --omit=dev
 
 # Copy source code
