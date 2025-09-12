@@ -27,8 +27,8 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Build frontend from root using workspace
-RUN npm run build -w frontend
+# Build frontend using npx from root
+RUN cd frontend && npx --yes vite@5.4.19 build
 
 # Create directories
 RUN mkdir -p logs uploads data

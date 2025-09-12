@@ -30,7 +30,8 @@
     "test:worker": "cd processing-storage && npm test"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "vite": "^5.4.19"
   },
   "workspaces": [
     "frontend",
