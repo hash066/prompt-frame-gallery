@@ -24,11 +24,11 @@ ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
 ENV NODE_ENV=production
 
 # Install root dependencies
-RUN npm install --omit=dev
+RUN npm install
 
 # Install and build frontend
 WORKDIR /app/frontend
-RUN npm install
+RUN npm install --include=dev
 COPY frontend/ .
 RUN npm run build
 
