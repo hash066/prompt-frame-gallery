@@ -175,13 +175,19 @@ class Database {
           updated_at TIMESTAMPTZ DEFAULT NOW()
         )
       `
-
+      const createUsersTable = `
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'creator',
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `
       await this.pg.query(createImagesTable)
       await this.pg.query(createImageBlobsTable)
       await this.pg.query(createImageStatusTable)
-
-
-
+      await this.pg.query(createUsersTable)
       logger.info('PostgreSQL tables created/verified')
       return
     }
@@ -606,6 +612,11 @@ class Database {
       if (filters.album) {
         clauses.push("metadata::text ILIKE $" + idx)
         params.push(`%"album":"${filters.album}"%`)
+        idx += 1
+      }
+      if (filters.owner) {
+        clauses.push("metadata::text ILIKE $" + idx)
+        params.push(`%"owner":"${filters.owner}"%`)
         idx += 1
       }
       if (filters.status) {
