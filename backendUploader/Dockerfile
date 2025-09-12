@@ -1,15 +1,10 @@
-FROM node:18-bullseye-slim
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install build tools for native modules and then dependencies
-RUN apt-get update
-RUN apt-get install -y python3 make g++
-RUN rm -rf /var/lib/apt/lists/*
-RUN npm install --omit=dev
+
 
 # Copy source code
 COPY . .
