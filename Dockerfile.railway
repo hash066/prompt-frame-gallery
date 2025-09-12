@@ -28,7 +28,8 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# Explicitly specify Vite version for build
+RUN npx --yes vite@5.4.19 build
 
 # Processing worker build stage
 FROM base as worker
@@ -53,6 +54,7 @@ COPY --from=frontend --chown=nodejs:nodejs /app/frontend ./frontend
 COPY --from=worker --chown=nodejs:nodejs /app/worker ./worker
 COPY --from=base --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --chown=nodejs:nodejs package*.json ./
+COPY --chown=nodejs:nodejs start-production.js ./
 COPY --chown=nodejs:nodejs start-local.js ./
 
 # Create necessary directories

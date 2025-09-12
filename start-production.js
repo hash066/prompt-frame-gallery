@@ -48,6 +48,10 @@ console.log(`   Frontend: Serving static files from built React app\n`);
 // Create main Express app to serve frontend and proxy API
 const app = express();
 
+// Add body parsing middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // Serve static frontend files
 const frontendPath = path.join(__dirname, 'frontend', 'dist');
 app.use(express.static(frontendPath));
@@ -70,12 +74,12 @@ backend.on('error', (err) => {
   process.exit(1);
 });
 
-// Add http-proxy-middleware dependency check
+// Ensure http-proxy-middleware is available
 let proxyMiddleware;
 try {
   proxyMiddleware = require('http-proxy-middleware');
 } catch (err) {
-  console.log('📦 Installing http-proxy-middleware...');
+  console.log('📦 http-proxy-middleware not found, using simple proxy instead');
   // For Railway, we'll do a simple proxy instead
   proxyMiddleware = null;
 }
@@ -84,18 +88,29 @@ try {
 if (!proxyMiddleware) {
   app.use('/api', (req, res) => {
     const http = require('http');
+    
+    // Clean up headers to avoid conflicts
+    const headers = { ...req.headers };
+    delete headers.host;
+    delete headers.connection;
+    
     const options = {
       hostname: 'localhost',
       port: PORT + 1,
       path: req.originalUrl,
       method: req.method,
-      headers: req.headers
+      headers: headers
     };
     
     const proxyReq = http.request(options, (proxyRes) => {
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res);
     });
+    
+    // Handle request body if present
+    if (req.body) {
+      proxyReq.write(JSON.stringify(req.body));
+    }
     
     proxyReq.on('error', (err) => {
       console.error('Proxy error:', err);
