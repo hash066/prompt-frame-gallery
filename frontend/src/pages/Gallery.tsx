@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Search, Filter, Grid, List, Plus, Save, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { listImages, getThumbnailUrl, moveToAlbum } from "@/lib/api";
+import { listImages, listMyImages, getThumbnailUrl, moveToAlbum } from "@/lib/api";
 
 type UIItem = { id: string; url: string; title: string; prompt?: string; tags: string[]; likes: number; createdAt: string };
 
@@ -14,9 +15,23 @@ export default function Gallery() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [items, setItems] = useState<UIItem[]>([])
   const [savingId, setSavingId] = useState<string | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => {
-    listImages().then(list => {
+    const isMyImages = location.pathname === '/my-images'
+    const loader = async () => {
+      if (isMyImages) {
+        const username = localStorage.getItem('username') || ''
+        if (!username) {
+          navigate('/login')
+          return [] as any[]
+        }
+        return await listMyImages(username)
+      }
+      return await listImages()
+    }
+    loader().then(list => {
       const mapped: UIItem[] = list.map(i => ({
         id: i.id,
         url: getThumbnailUrl(i.id),
@@ -27,7 +42,7 @@ export default function Gallery() {
       }))
       setItems(mapped)
     }).catch(() => setItems([]))
-  }, [])
+  }, [location.pathname, navigate])
 
   const allTags = Array.from(new Set(items.flatMap(img => img.tags))).slice(0, 8);
 

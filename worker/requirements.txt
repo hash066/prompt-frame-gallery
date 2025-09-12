@@ -1,0 +1,9 @@
+torch==2.3.1+cpu
+sentence-transformers==3.0.1
+numpy==1.26.4
+minio==7.2.9
+psycopg2-binary==2.9.9
+redis==5.0.7
+celery==5.4.0
+pydantic==2.9.2
+
