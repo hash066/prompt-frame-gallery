@@ -60,7 +60,7 @@ const backendEnv = {
   FRONTEND_STATIC_PATH: frontendPath
 };
 
-const backend = spawn('node', ['backend/src/server.js'], {
+const backend = spawn('node', ['backendUploader/src/server.js'], {
   stdio: 'inherit',
   env: backendEnv
 });
@@ -129,7 +129,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 if (process.env.REDIS_URL) {
   setTimeout(() => {
     console.log('⚙️ Starting Processing Worker...');
-    const worker = spawn('node', ['worker/src/worker.js'], {
+    const worker = spawn('node', ['processing-storage/src/worker.js'], {
       stdio: 'inherit',
       env: { ...process.env }
     });

@@ -1,5 +1,5 @@
-# Multi-stage build optimized for Railway
-FROM node:18-alpine as base
+# Simplified single-stage build for Railway
+FROM node:18-alpine
 
 # Install system dependencies
 RUN apk add --no-cache \
@@ -7,59 +7,46 @@ RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    sqlite
-
-WORKDIR /app
-
-# Copy root package files first
-COPY package*.json ./
-RUN npm ci --only=production
-
-# Build frontend
-FROM base as frontend-builder
-WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm ci
-COPY frontend/ ./
-RUN npm run build
-
-# Build backend
-FROM base as backend-builder
-WORKDIR /app/backend
-COPY backendUploader/package*.json ./
-RUN npm ci --only=production
-COPY backendUploader/ ./
-
-# Build worker
-FROM base as worker-builder
-WORKDIR /app/worker
-COPY processing-storage/package*.json ./
-RUN npm ci --only=production
-COPY processing-storage/ ./
-
-# Final production image
-FROM node:18-alpine as production
-
-# Install runtime dependencies
-RUN apk add --no-cache \
-    vips-dev \
     sqlite \
     && addgroup -g 1001 -S nodejs \
     && adduser -S nodejs -u 1001
 
 WORKDIR /app
 
-# Copy built applications
-COPY --from=backend-builder --chown=nodejs:nodejs /app/backend ./backend
-COPY --from=frontend-builder --chown=nodejs:nodejs /app/frontend/dist ./frontend/dist
-COPY --from=worker-builder --chown=nodejs:nodejs /app/worker ./worker
+# Copy all package.json files first
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+COPY backendUploader/package*.json ./backendUploader/
+COPY processing-storage/package*.json ./processing-storage/
 
-# Copy root files
-COPY --chown=nodejs:nodejs package*.json ./
-COPY --chown=nodejs:nodejs start-production.js ./
+# Install root dependencies
+RUN npm install --omit=dev
+
+# Install and build frontend
+WORKDIR /app/frontend
+RUN npm install
+COPY frontend/ .
+RUN npm run build
+
+# Install backend dependencies
+WORKDIR /app/backendUploader
+RUN npm install --omit=dev
+COPY backendUploader/ .
+
+# Install worker dependencies
+WORKDIR /app/processing-storage
+RUN npm install --omit=dev
+COPY processing-storage/ .
+
+# Back to root and copy remaining files
+WORKDIR /app
+COPY start-production.js ./
 
 # Create necessary directories
-RUN mkdir -p logs uploads data backend/data && chown -R nodejs:nodejs /app
+RUN mkdir -p logs uploads data backendUploader/data && chown -R nodejs:nodejs /app
+
+# Copy frontend build to expected location
+RUN mkdir -p frontend/dist && cp -r frontend/dist/* frontend/dist/ 2>/dev/null || true
 
 USER nodejs
 
