@@ -27,7 +27,8 @@
     "install:all": "npm install && cd frontend && npm install && cd ../backendUploader && npm install && cd ../processing-storage && npm install",
     "test": "npm run test:backend && npm run test:worker",
     "test:backend": "cd backendUploader && npm test",
-    "test:worker": "cd processing-storage && npm test"
+    "test:worker": "cd processing-storage && npm test",
+    "test:railway": "node test-railway-db.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
