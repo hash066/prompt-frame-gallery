@@ -19,6 +19,10 @@ COPY frontend/package*.json ./frontend/
 COPY backendUploader/package*.json ./backendUploader/
 COPY processing-storage/package*.json ./processing-storage/
 
+# Environment variables to avoid native build issues
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
+ENV NODE_ENV=production
+
 # Install root dependencies
 RUN npm install --omit=dev
 

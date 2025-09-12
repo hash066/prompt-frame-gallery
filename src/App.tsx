@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import NotFound from "./pages/NotFound";
 import Upload from "./pages/Upload";
+import ThemeSettings from "./pages/ThemeSettings";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ const App = () => (
                       <Route path="/favorites" element={<Gallery />} />
                       <Route path="/search" element={<Gallery />} />
                       <Route path="/settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Settings</h1></div>} />
+                      <Route path="/themes" element={<ThemeSettings />} />
                       <Route path="/profile" element={<div className="p-6"><h1 className="text-2xl font-bold">Profile</h1></div>} />
                       <Route path="*" element={<NotFound />} />
                     </Routes>
