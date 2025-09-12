@@ -23,21 +23,54 @@ class Database {
   constructor() {
     this.db = null
     this.pg = null
-    this.client = (process.env.DB_CLIENT || 'sqlite').toLowerCase()
+    // For Railway deployments, prefer PostgreSQL if available
+    this.client = this.determineDatabaseClient()
     this.dbPath = path.join(__dirname, '..', 'data', 'images.db')
+  }
+
+  determineDatabaseClient() {
+    // Check for Railway PostgreSQL environment variables first
+    if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
+      return 'postgres'
+    }
+    // Check for explicit PostgreSQL configuration
+    if (process.env.POSTGRES_HOST || process.env.POSTGRES_DB) {
+      return 'postgres'
+    }
+    // Check for explicit client preference
+    if (process.env.DB_CLIENT) {
+      return process.env.DB_CLIENT.toLowerCase()
+    }
+    // Default to SQLite for local development
+    return 'sqlite'
   }
 
   async initialize() {
     try {
       if (this.client === 'postgres') {
         // Initialize PostgreSQL connection pool
-        this.pg = new Pool({
-          host: process.env.POSTGRES_HOST || 'localhost',
-          port: parseInt(process.env.POSTGRES_PORT || '5432'),
-          user: process.env.POSTGRES_USER || 'postgres',
-          password: process.env.POSTGRES_PASSWORD || 'postgres',
-          database: process.env.POSTGRES_DB || 'image_gallery'
-        })
+        let pgConfig = {}
+        
+        // Handle Railway's DATABASE_URL format
+        if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
+          const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
+          pgConfig = {
+            connectionString: databaseUrl,
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+          }
+        } else {
+          // Fallback to individual environment variables
+          pgConfig = {
+            host: process.env.POSTGRES_HOST || 'localhost',
+            port: parseInt(process.env.POSTGRES_PORT || '5432'),
+            user: process.env.POSTGRES_USER || 'postgres',
+            password: process.env.POSTGRES_PASSWORD || 'postgres',
+            database: process.env.POSTGRES_DB || 'image_gallery',
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+          }
+        }
+
+        this.pg = new Pool(pgConfig)
 
         // Verify connection
         await this.pg.query('SELECT 1')
@@ -49,22 +82,49 @@ class Database {
       // Ensure data directory exists for SQLite
       await fs.ensureDir(path.dirname(this.dbPath))
       
-      // Create SQLite database connection
-      this.db = new sqlite3.Database(this.dbPath, (err) => {
-        if (err) {
-          logger.error('Error opening database:', err)
-          throw err
-        }
-        logger.info('Connected to SQLite database')
-      })
+      // Create SQLite database connection with error handling
+      try {
+        this.db = new sqlite3.Database(this.dbPath, (err) => {
+          if (err) {
+            logger.error('Error opening SQLite database:', err)
+            throw err
+          }
+          logger.info('Connected to SQLite database')
+        })
 
-      // Create tables
-      await this.createTables()
-      
-      // Set up error handling
-      this.db.on('error', (err) => {
-        logger.error('Database error:', err)
-      })
+        // Create tables
+        await this.createTables()
+        
+        // Set up error handling
+        this.db.on('error', (err) => {
+          logger.error('SQLite database error:', err)
+        })
+      } catch (sqliteError) {
+        logger.error('SQLite initialization failed:', sqliteError)
+        
+        // If SQLite fails and we're in production, try to fallback to PostgreSQL
+        if (process.env.NODE_ENV === 'production') {
+          logger.warn('Attempting fallback to PostgreSQL due to SQLite failure')
+          this.client = 'postgres'
+          
+          // Try to initialize PostgreSQL
+          const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
+          if (databaseUrl) {
+            this.pg = new Pool({
+              connectionString: databaseUrl,
+              ssl: { rejectUnauthorized: false }
+            })
+            
+            await this.pg.query('SELECT 1')
+            logger.info('Successfully connected to PostgreSQL as fallback')
+            await this.createTables()
+            return
+          }
+        }
+        
+        // If no fallback available, re-throw the original error
+        throw sqliteError
+      }
 
     } catch (error) {
       logger.error('Failed to initialize database:', error)
