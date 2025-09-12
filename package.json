@@ -4,7 +4,9 @@
   "description": "Full-stack image gallery application with React frontend and Node.js backend services",
   "private": true,
   "scripts": {
-    "start": "node start-local.js",
+    "start": "node start-production.js",
+    "start:local": "node start-local.js",
+    "start:production": "node start-production.js",
     "start:docker": "docker-compose up",
     "start:docker:dev": "docker-compose up --build",
     "start:docker:services": "docker-compose up postgres redis minio",
@@ -18,7 +20,7 @@
     "start:local:worker": "cd processing-storage && npm start",
     "stop": "docker-compose down",
     "stop:all": "docker-compose down -v",
-    "build": "docker-compose build",
+    "build": "echo 'Building for Railway - no docker-compose needed'",
     "logs": "docker-compose logs -f",
     "logs:backend": "docker-compose logs -f backend",
     "logs:frontend": "docker-compose logs -f frontend",
@@ -38,6 +40,7 @@
   ],
   "dependencies": {
     "cloudinary": "^2.7.0",
+    "express": "^4.18.2",
     "multer": "^2.0.2"
   }
 }
