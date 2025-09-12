@@ -15,7 +15,7 @@ WORKDIR /app
 ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
 ENV NODE_ENV=production
 
-# Copy package files
+# Copy package files and lock files
 COPY package*.json ./
 COPY frontend/package*.json ./frontend/
 COPY backendUploader/package*.json ./backendUploader/
@@ -27,7 +27,7 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Build frontend from the frontend directory
+# Build frontend
 WORKDIR /app/frontend
 RUN npm run build
 
