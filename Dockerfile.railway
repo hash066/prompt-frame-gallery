@@ -24,6 +24,8 @@ WORKDIR /app/backend
 COPY backendUploader/package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
 COPY backendUploader/ ./
+# Rebuild native modules for the container architecture
+RUN npm rebuild
 
 # Frontend build stage  
 FROM base as frontend
@@ -47,6 +49,10 @@ FROM node:18-bullseye-slim as production
 RUN apt-get update && apt-get install -y \
     libvips-dev \
     sqlite3 \
+    python3 \
+    python3-distutils \
+    make \
+    g++ \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd -g 1001 nodejs \
   && useradd -m -u 1001 -g nodejs nodejs
@@ -61,6 +67,9 @@ COPY --from=base --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --chown=nodejs:nodejs package*.json ./
 COPY --chown=nodejs:nodejs start-production.js ./
 COPY --chown=nodejs:nodejs start-local.js ./
+
+# Rebuild native modules in final image to ensure compatibility
+RUN npm rebuild
 
 # Create necessary directories
 RUN mkdir -p logs uploads data && chown -R nodejs:nodejs /app
