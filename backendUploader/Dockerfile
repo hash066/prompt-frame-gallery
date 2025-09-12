@@ -4,6 +4,7 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+
 # Install build tools for native modules and then dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
@@ -14,9 +15,9 @@ RUN apt-get update && apt-get install -y \
     libvips-dev \
   && rm -rf /var/lib/apt/lists/*
 RUN npm install --omit=dev
-
 # Rebuild native modules for the container architecture
 RUN npm rebuild
+
 
 # Copy source code
 COPY . .
