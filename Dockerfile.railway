@@ -13,21 +13,22 @@ WORKDIR /app
 
 # Copy root package files
 COPY package*.json ./
-# Production install with lockfile optional and modern flags
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+# Production install with lockfile optional; fall back to npm install if lock is out of sync
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
 
 # Backend build stage
 FROM base as backend
 WORKDIR /app/backend
 COPY backendUploader/package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
 COPY backendUploader/ ./
 
 # Frontend build stage  
 FROM base as frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Frontend needs devDeps to build; fall back to install if lock is out of sync
+RUN if [ -f package-lock.json ]; then npm ci || npm install; else npm install; fi
 COPY frontend/ ./
 # Explicitly specify Vite version for build
 RUN npx --yes vite@5.4.19 build
@@ -36,7 +37,7 @@ RUN npx --yes vite@5.4.19 build
 FROM base as worker
 WORKDIR /app/worker
 COPY processing-storage/package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
 COPY processing-storage/ ./
 
 # Final production image
