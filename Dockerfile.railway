@@ -1,9 +1,15 @@
 # Multi-stage build for Railway deployment
-FROM node:18-bullseye-slim as base
+FROM node:18-bullseye as base
 
 # Install system dependencies for node-gyp/sharp (glibc) and PostgreSQL
 RUN apt-get update && apt-get install -y \
     libvips-dev \
+    libglib2.0-dev \
+    libgobject-2.0-dev \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libgdk-pixbuf2.0-dev \
+    libffi-dev \
     python3 \
     python3-distutils \
     make \
@@ -12,6 +18,7 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     libpq-dev \
     build-essential \
+    pkg-config \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -34,7 +41,8 @@ COPY backendUploader/ ./
 
 # Rebuild native modules specifically for the container architecture
 # This ensures sqlite3 and other native modules are compiled correctly
-RUN npm rebuild sqlite3 sharp
+RUN npm rebuild sqlite3 --unsafe-perm=true --allow-root && \
+    npm rebuild sharp --unsafe-perm=true --allow-root
 
 # Frontend build stage  
 FROM base as frontend
@@ -54,9 +62,15 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=de
 COPY processing-storage/ ./
 
 # Final production image
-FROM node:18-bullseye-slim as production
+FROM node:18-bullseye as production
 RUN apt-get update && apt-get install -y \
     libvips-dev \
+    libglib2.0-dev \
+    libgobject-2.0-dev \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libgdk-pixbuf2.0-dev \
+    libffi-dev \
     sqlite3 \
     postgresql-client \
     libpq-dev \
@@ -65,6 +79,7 @@ RUN apt-get update && apt-get install -y \
     make \
     g++ \
     build-essential \
+    pkg-config \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd -g 1001 nodejs \
   && useradd -m -u 1001 -g nodejs nodejs
@@ -82,7 +97,8 @@ COPY --chown=nodejs:nodejs start-local.js ./
 
 # Rebuild native modules in final image to ensure compatibility
 # This is critical for Railway's environment
-RUN npm rebuild sqlite3 sharp
+RUN npm rebuild sqlite3 --unsafe-perm=true --allow-root && \
+    npm rebuild sharp --unsafe-perm=true --allow-root
 
 # Create necessary directories
 RUN mkdir -p logs uploads data && chown -R nodejs:nodejs /app
