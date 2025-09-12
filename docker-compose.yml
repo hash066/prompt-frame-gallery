@@ -74,6 +74,8 @@ services:
       - POSTGRES_USER=image_user
       - POSTGRES_PASSWORD=image_pass
       - POSTGRES_DB=image_gallery
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,6 +105,8 @@ services:
       - HEALTH_PORT=3002
     ports:
       - "3002:3002"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
@@ -121,9 +125,11 @@ services:
       - "3003:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:3001
+      - NEXT_PUBLIC_API_URL=http://host.docker.internal:3001
       - NEXT_PUBLIC_MAX_FILE_SIZE=10485760
       - NEXT_PUBLIC_ALLOWED_TYPES=image/jpeg,image/png,image/webp,image/avif
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - backend
     restart: unless-stopped

@@ -1,5 +1,4 @@
-const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:3001"
-const SIM_API_URL = (import.meta as any).env?.VITE_SIM_API_URL || "http://localhost:8000"
+
 
 export type ImageItem = {
   id: string

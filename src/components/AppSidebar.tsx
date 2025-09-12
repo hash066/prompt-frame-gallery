@@ -41,6 +41,7 @@ const mainNavItems = [
 
 const bottomNavItems = [
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Themes", url: "/themes", icon: Palette },
   { title: "Profile", url: "/profile", icon: User },
 ];
 
