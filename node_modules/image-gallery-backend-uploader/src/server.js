@@ -103,6 +103,26 @@ const MINIO_BUCKET = process.env.MINIO_BUCKET || 'images'
 
 
 
+// Normalize a temp file path that might be an absolute Windows path from host
+const resolveTempPath = async (rawPath) => {
+  if (!rawPath) return null
+  try {
+    // If path exists as-is inside container, use it
+    if (await fs.pathExists(rawPath)) return rawPath
+  } catch {}
+  try {
+    // Translate known host prefix to container path
+    // Example host path: D:\\RVCE\\prompt-frame-gallery\\backendUploader\\uploads\\temp\\...
+    const normalized = rawPath
+      .replace(/\\/g, '/')
+      .replace(/.*backendUploader\/(uploads\/temp\/.*)$/i, '/app/$1')
+    if (normalized && normalized.startsWith('/app/uploads')) {
+      if (await fs.pathExists(normalized)) return normalized
+    }
+  } catch {}
+  return null
+}
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -571,6 +591,26 @@ app.get('/api/images/:id/url', async (req, res) => {
     }
     
     if (!objectKey) {
+      // As a last resort, serve a placeholder thumbnail while processing
+      if (variant === 'thumbnail') {
+        try {
+          res.setHeader('Cache-Control', 'no-cache')
+          res.type('image/png')
+          return sharp({
+            create: {
+              width: 200,
+              height: 200,
+              channels: 3,
+              background: '#e5e7eb'
+            }
+          })
+          .png()
+          .toBuffer()
+          .then(buf => res.end(buf))
+        } catch (phErr) {
+          logger.warn('Placeholder generation failed:', phErr)
+        }
+      }
       return res.status(404).json({ error: 'Variant not available' })
     }
     
@@ -660,6 +700,45 @@ app.get('/api/images/:id/download', async (req, res) => {
           logger.error('Error streaming temp file fallback:', fallbackError)
         }
       }
+      // Try to resolve Windows host path into container path and stream
+      if (image.status === 'processing' && image.temp_path) {
+        const resolved = await resolveTempPath(image.temp_path)
+        const candidates = []
+        if (resolved) candidates.push(resolved)
+        try {
+          const base = path.basename(image.temp_path)
+          candidates.push(path.join('/app/uploads/temp', base))
+          candidates.push(path.join('/app/src/uploads/temp', base))
+        } catch {}
+        let existingPath = null
+        for (const p of candidates) {
+          try {
+            if (p && await fs.pathExists(p)) { existingPath = p; break }
+          } catch {}
+        }
+        // If not found, try to find a file that ends with the original filename
+        if (!existingPath && image.original_name) {
+          const searchDirs = ['/app/uploads/temp', '/app/src/uploads/temp']
+          const suffix = image.original_name
+          for (const dir of searchDirs) {
+            try {
+              const entries = await fs.readdir(dir)
+              const match = entries.find(name => name.endsWith(suffix))
+              if (match) { existingPath = path.join(dir, match); break }
+            } catch {}
+          }
+        }
+        if (existingPath) {
+          if (variant === 'thumbnail') {
+            res.type('image/jpeg')
+            return fs.createReadStream(existingPath).pipe(
+              sharp().resize(200, 200, { fit: 'cover', position: 'center' }).jpeg({ quality: 85 })
+            ).pipe(res)
+          }
+          res.type(`image/${image.format || 'jpeg'}`)
+          return fs.createReadStream(existingPath).pipe(res)
+        }
+      }
 
       // Heuristic fallback: try conventional MinIO paths even if DB not updated yet
       try {
@@ -705,18 +784,30 @@ app.get('/api/images/:id/download', async (req, res) => {
 
     try {
       if (minioClient) {
-        const stat = await minioClient.statObject(MINIO_BUCKET, objectKey)
-        res.setHeader('Content-Type', stat.metaData?.['content-type'] || 'image/jpeg')
-        res.setHeader('Content-Length', stat.size)
-        res.setHeader('Cache-Control', 'public, max-age=31536000')
-        minioClient.getObject(MINIO_BUCKET, objectKey, (err, objStream) => {
+        // Try streaming directly from MinIO. If it fails, fall back to local filesystem when possible.
+        minioClient.getObject(MINIO_BUCKET, objectKey, async (err, objStream) => {
           if (err) {
             logger.error('Error streaming from MinIO:', err)
+            // Fallback to local file if available
+            try {
+              const filePath = path.join(uploadDir, objectKey)
+              if (await fs.pathExists(filePath)) {
+                res.setHeader('Cache-Control', 'public, max-age=31536000')
+                if (variant === 'thumbnail') {
+                  res.type('image/jpeg')
+                } else {
+                  res.type(`image/${image.format || 'jpeg'}`)
+                }
+                return fs.createReadStream(filePath).pipe(res)
+              }
+            } catch {}
             if (err.code === 'NoSuchKey') {
               return res.status(404).json({ error: 'File not found in storage' })
             }
             return res.status(500).json({ error: 'Download failed' })
           }
+          // Successful MinIO stream
+          res.setHeader('Cache-Control', 'public, max-age=31536000')
           objStream.pipe(res)
         })
       } else {

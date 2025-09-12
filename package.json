@@ -4,13 +4,14 @@
   "description": "Full-stack image gallery application with React frontend and Node.js backend services",
   "private": true,
   "scripts": {
-    "start": "node start-local.js",
+    "start": "node start-production.js",
+    "start:local": "node start-local.js",
+    "start:production": "node start-production.js",
     "start:docker": "docker-compose up",
     "start:docker:dev": "docker-compose up --build",
     "start:docker:services": "docker-compose up postgres redis minio",
     "start:docker:backend": "docker-compose up backend worker",
     "start:docker:frontend": "docker-compose up frontend",
-    "start:local": "node start-local.js",
     "start:local:services": "docker-compose up -d postgres redis minio",
     "start:local:all": "concurrently \"npm run start:local:backend\" \"npm run start:local:worker\" \"npm run start:local:frontend\"",
     "start:local:frontend": "cd frontend && npm run dev",
@@ -18,7 +19,7 @@
     "start:local:worker": "cd processing-storage && npm start",
     "stop": "docker-compose down",
     "stop:all": "docker-compose down -v",
-    "build": "docker-compose build",
+    "build": "echo 'Building for Railway - no docker-compose needed'",
     "logs": "docker-compose logs -f",
     "logs:backend": "docker-compose logs -f backend",
     "logs:frontend": "docker-compose logs -f frontend",
@@ -29,7 +30,8 @@
     "test:worker": "cd processing-storage && npm test"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "vite": "^5.4.19"
   },
   "workspaces": [
     "frontend",
@@ -38,6 +40,8 @@
   ],
   "dependencies": {
     "cloudinary": "^2.7.0",
-    "multer": "^2.0.2"
+    "express": "^4.18.2",
+    "multer": "^2.0.2",
+    "http-proxy-middleware": "^2.0.6"
   }
 }

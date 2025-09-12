@@ -14,6 +14,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import NotFound from "./pages/NotFound";
 import Upload from "./pages/Upload";
+import ImageClassifier from "./pages/ImageClassifier";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App = () => (
                     <Routes>
                       <Route path="/" element={<Gallery />} />
                       <Route path="/generate" element={<Generate />} />
+                      <Route path="/classify" element={<ImageClassifier />} />
                       <Route path="/my-images" element={<Gallery />} />
                       <Route path="/upload" element={<Upload />} />
                       <Route path="/albums" element={<Albums />} />

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Search, Filter, Grid, List, Plus } from "lucide-react";
+import { Search, Filter, Grid, List, Plus, Save, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { listImages, getThumbnailUrl } from "@/lib/api";
+import { listImages, getThumbnailUrl, moveToAlbum } from "@/lib/api";
 
 type UIItem = { id: string; url: string; title: string; prompt?: string; tags: string[]; likes: number; createdAt: string };
 
@@ -13,6 +13,7 @@ export default function Gallery() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [items, setItems] = useState<UIItem[]>([])
+  const [savingId, setSavingId] = useState<string | null>(null)
 
   useEffect(() => {
     listImages().then(list => {
@@ -41,6 +42,22 @@ export default function Gallery() {
     
     return matchesSearch && matchesTag;
   });
+
+  async function onSaveToAlbum(id: string) {
+    try {
+      const name = window.prompt("Save to album", "My Album")
+      if (!name) return
+      setSavingId(id)
+      await moveToAlbum(id, name)
+      // optimistic: mark tag so it shows up in filters
+      setItems(prev => prev.map(it => it.id === id ? { ...it, tags: Array.from(new Set([...(it.tags||[]), name])) } : it))
+    } catch (e) {
+      console.error(e)
+      alert("Failed to save to album")
+    } finally {
+      setSavingId(null)
+    }
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -140,21 +157,37 @@ export default function Gallery() {
                 alt={image.title}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
+              {/* Removed top-right save overlay per request */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="absolute bottom-4 left-4 right-4 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 opacity-0 group-hover:opacity-100">
-                <p className="text-white text-sm font-medium mb-1">{image.title}</p>
-                <p className="text-white/80 text-xs line-clamp-2">{image.prompt}</p>
-              </div>
+              {/* Removed image title caption per request */}
             </div>
             
             <CardContent className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-card-foreground group-hover:text-primary transition-colors">
-                  {image.title}
-                </h3>
-                <Badge variant="secondary" className="text-xs">
-                  ❤️ {image.likes}
-                </Badge>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  title="Like"
+                  aria-label="Like"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setItems(prev => prev.map(it => it.id === image.id ? { ...it, likes: (it.likes || 0) + 1 } : it))
+                  }}
+                >
+                  <Heart className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="default"
+                  className="h-8 w-8"
+                  title={savingId === image.id ? 'Saving…' : 'Save'}
+                  aria-label="Save"
+                  onClick={(e) => { e.stopPropagation(); onSaveToAlbum(image.id) }}
+                  disabled={savingId === image.id}
+                >
+                  <Save className="w-4 h-4" />
+                </Button>
               </div>
               
               <p className="text-sm text-muted-foreground line-clamp-2">
