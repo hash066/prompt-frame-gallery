@@ -1,4 +1,4 @@
-FROM node:18-slim
+FROM node:20-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -27,12 +27,8 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Build frontend
-WORKDIR /app/frontend
-RUN npm run build
-
-# Go back to root
-WORKDIR /app
+# Build frontend from root using workspace
+RUN npm run build -w frontend
 
 # Create directories
 RUN mkdir -p logs uploads data
