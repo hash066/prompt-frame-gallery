@@ -1,26 +1,42 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, Eye, EyeOff, Mail, Lock } from "lucide-react";
+import { Sparkles, Eye, EyeOff, Mail, Lock, Shield } from "lucide-react";
 import { toast } from "sonner";
+import { login, seedAdmin } from "@/lib/api";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
     try {
-      // TODO: Implement Supabase auth login
-      toast.success("Welcome back to AI Gallery!");
-      // Redirect to dashboard
+      if (isAdminMode) {
+        // Seed admin and validate static creds: nexel / nexel
+        await seedAdmin();
+        if (username === "nexel" && password === "nexel") {
+          toast.success("Admin login successful");
+          navigate("/admin");
+          return;
+        }
+        toast.error("Invalid admin credentials");
+        return;
+      }
+      const result = await login(username, password);
+      // Persist simple session: store username for upload ownership
+      localStorage.setItem('username', username);
+      toast.success("Welcome back!");
+      if (result.role === "admin") navigate("/admin");
+      else navigate("/");
     } catch (error) {
       toast.error("Login failed. Please check your credentials.");
     } finally {
@@ -31,18 +47,18 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gallery-bg">
       <div className="absolute inset-0 bg-gradient-bg opacity-50" />
-      
+
       <Card className="w-full max-w-md relative z-10 bg-card/80 backdrop-blur-lg border-primary/20 glow-primary">
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto w-16 h-16 bg-gradient-primary rounded-2xl flex items-center justify-center glow-primary">
-            <Sparkles className="w-8 h-8 text-primary-foreground" />
+            {isAdminMode ? <Shield className="w-8 h-8 text-primary-foreground" /> : <Sparkles className="w-8 h-8 text-primary-foreground" />}
           </div>
           <div>
             <CardTitle className="text-2xl font-bold gradient-text">
-              Welcome Back
+              {isAdminMode ? "Admin Login" : "Welcome "}
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              Sign in to your AI Gallery account
+              {isAdminMode ? "Sign in as Admin with our team name as username and password" : "Sign in to your Creator account"}
             </CardDescription>
           </div>
         </CardHeader>
@@ -50,17 +66,17 @@ export default function Login() {
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">
-                Email
+              <Label htmlFor="username" className="text-sm font-medium">
+                {isAdminMode ? "Team Name" : "Username"}
               </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="username"
+                  type="text"
+                  placeholder={isAdminMode ? "Your team name" : "your-username"}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="pl-10 bg-input/50 border-border/50 focus:border-primary transition-smooth"
                   required
                 />
@@ -76,7 +92,7 @@ export default function Login() {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder="Your password"
+                  placeholder={isAdminMode ? "Team secret" : "Your password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10 pr-10 bg-input/50 border-border/50 focus:border-primary transition-smooth"
@@ -99,12 +115,14 @@ export default function Login() {
             </div>
 
             <div className="flex items-center justify-between">
-              <Link 
-                to="/forgot-password" 
-                className="text-sm text-primary hover:text-primary-glow transition-smooth"
-              >
-                Forgot password?
-              </Link>
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsAdminMode((s) => !s)}>
+                {isAdminMode ? "Switch to Creator" : "Switch to Admin"}
+              </Button>
+              {!isAdminMode && (
+                <Link to="/register" className="text-sm text-primary hover:text-primary-glow transition-smooth">
+                  Create an account
+                </Link>
+              )}
             </div>
           </CardContent>
 
@@ -116,16 +134,6 @@ export default function Login() {
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
-
-            <div className="text-center text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link 
-                to="/register" 
-                className="text-primary hover:text-primary-glow transition-smooth font-medium"
-              >
-                Create one now
-              </Link>
-            </div>
           </CardFooter>
         </form>
       </Card>
