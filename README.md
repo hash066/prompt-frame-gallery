@@ -2,6 +2,9 @@
 
 A comprehensive image gallery application with robust upload UX, backend processing pipeline, and storage management.
 
+##Demo link as the deployment process corrupted the files 
+https://go.screenpal.com/watch/cTQIFenoEln
+
 ## Architecture
 
 ### Frontend
