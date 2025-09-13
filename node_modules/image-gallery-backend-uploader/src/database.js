@@ -23,21 +23,54 @@ class Database {
   constructor() {
     this.db = null
     this.pg = null
-    this.client = (process.env.DB_CLIENT || 'sqlite').toLowerCase()
+    // For Railway deployments, prefer PostgreSQL if available
+    this.client = this.determineDatabaseClient()
     this.dbPath = path.join(__dirname, '..', 'data', 'images.db')
+  }
+
+  determineDatabaseClient() {
+    // Check for Railway PostgreSQL environment variables first
+    if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
+      return 'postgres'
+    }
+    // Check for explicit PostgreSQL configuration
+    if (process.env.POSTGRES_HOST || process.env.POSTGRES_DB) {
+      return 'postgres'
+    }
+    // Check for explicit client preference
+    if (process.env.DB_CLIENT) {
+      return process.env.DB_CLIENT.toLowerCase()
+    }
+    // Default to SQLite for local development
+    return 'sqlite'
   }
 
   async initialize() {
     try {
       if (this.client === 'postgres') {
         // Initialize PostgreSQL connection pool
-        this.pg = new Pool({
-          host: process.env.POSTGRES_HOST || 'localhost',
-          port: parseInt(process.env.POSTGRES_PORT || '5432'),
-          user: process.env.POSTGRES_USER || 'postgres',
-          password: process.env.POSTGRES_PASSWORD || 'postgres',
-          database: process.env.POSTGRES_DB || 'image_gallery'
-        })
+        let pgConfig = {}
+        
+        // Handle Railway's DATABASE_URL format
+        if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
+          const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
+          pgConfig = {
+            connectionString: databaseUrl,
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+          }
+        } else {
+          // Fallback to individual environment variables
+          pgConfig = {
+            host: process.env.POSTGRES_HOST || 'localhost',
+            port: parseInt(process.env.POSTGRES_PORT || '5432'),
+            user: process.env.POSTGRES_USER || 'postgres',
+            password: process.env.POSTGRES_PASSWORD || 'postgres',
+            database: process.env.POSTGRES_DB || 'image_gallery',
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+          }
+        }
+
+        this.pg = new Pool(pgConfig)
 
         // Verify connection
         await this.pg.query('SELECT 1')
@@ -49,22 +82,49 @@ class Database {
       // Ensure data directory exists for SQLite
       await fs.ensureDir(path.dirname(this.dbPath))
       
-      // Create SQLite database connection
-      this.db = new sqlite3.Database(this.dbPath, (err) => {
-        if (err) {
-          logger.error('Error opening database:', err)
-          throw err
-        }
-        logger.info('Connected to SQLite database')
-      })
+      // Create SQLite database connection with error handling
+      try {
+        this.db = new sqlite3.Database(this.dbPath, (err) => {
+          if (err) {
+            logger.error('Error opening SQLite database:', err)
+            throw err
+          }
+          logger.info('Connected to SQLite database')
+        })
 
-      // Create tables
-      await this.createTables()
-      
-      // Set up error handling
-      this.db.on('error', (err) => {
-        logger.error('Database error:', err)
-      })
+        // Create tables
+        await this.createTables()
+        
+        // Set up error handling
+        this.db.on('error', (err) => {
+          logger.error('SQLite database error:', err)
+        })
+      } catch (sqliteError) {
+        logger.error('SQLite initialization failed:', sqliteError)
+        
+        // If SQLite fails and we're in production, try to fallback to PostgreSQL
+        if (process.env.NODE_ENV === 'production') {
+          logger.warn('Attempting fallback to PostgreSQL due to SQLite failure')
+          this.client = 'postgres'
+          
+          // Try to initialize PostgreSQL
+          const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL
+          if (databaseUrl) {
+            this.pg = new Pool({
+              connectionString: databaseUrl,
+              ssl: { rejectUnauthorized: false }
+            })
+            
+            await this.pg.query('SELECT 1')
+            logger.info('Successfully connected to PostgreSQL as fallback')
+            await this.createTables()
+            return
+          }
+        }
+        
+        // If no fallback available, re-throw the original error
+        throw sqliteError
+      }
 
     } catch (error) {
       logger.error('Failed to initialize database:', error)
@@ -115,9 +175,19 @@ class Database {
           updated_at TIMESTAMPTZ DEFAULT NOW()
         )
       `
+      const createUsersTable = `
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'creator',
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `
       await this.pg.query(createImagesTable)
       await this.pg.query(createImageBlobsTable)
       await this.pg.query(createImageStatusTable)
+      await this.pg.query(createUsersTable)
       logger.info('PostgreSQL tables created/verified')
       return
     }
@@ -158,6 +228,15 @@ class Database {
           FOREIGN KEY (image_id) REFERENCES images (id) ON DELETE CASCADE
         )
       `
+      const createUsersTable = `
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'creator',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `
 
       this.db.serialize(() => {
         this.db.run(createImagesTable, (err) => {
@@ -176,8 +255,91 @@ class Database {
             return
           }
           logger.info('Image status table created/verified')
-          resolve()
+          this.db.run(createUsersTable, (err) => {
+            if (err) {
+              logger.error('Error creating users table:', err)
+              reject(err)
+              return
+            }
+            logger.info('Users table created/verified')
+            resolve()
+          })
         })
+      })
+    })
+  }
+
+  async createUser(user) {
+    const { id, username, password, role } = user
+    if (this.client === 'postgres') {
+      const sql = `
+        INSERT INTO users (id, username, password, role)
+        VALUES ($1,$2,$3,$4)
+        ON CONFLICT (username) DO NOTHING
+      `
+      const result = await this.pg.query(sql, [id, username, password, role || 'creator'])
+      return result.rowCount
+    }
+    return new Promise((resolve, reject) => {
+      const sql = `INSERT OR IGNORE INTO users (id, username, password, role) VALUES (?,?,?,?)`
+      this.db.run(sql, [id, username, password, role || 'creator'], function(err){
+        if (err) {
+          logger.error('Error creating user:', err)
+          reject(err)
+        } else {
+          resolve(this.changes)
+        }
+      })
+    })
+  }
+
+  async getUserByUsername(username) {
+    if (this.client === 'postgres') {
+      const { rows } = await this.pg.query('SELECT * FROM users WHERE username=$1', [username])
+      return rows[0] || null
+    }
+    return new Promise((resolve, reject) => {
+      this.db.get('SELECT * FROM users WHERE username = ?', [username], (err, row) => {
+        if (err) {
+          logger.error('Error fetching user:', err)
+          reject(err)
+        } else {
+          resolve(row || null)
+        }
+      })
+    })
+  }
+
+  async listUsers() {
+    if (this.client === 'postgres') {
+      const { rows } = await this.pg.query('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC')
+      return rows
+    }
+    return new Promise((resolve, reject) => {
+      this.db.all('SELECT id, username, role, created_at FROM users ORDER BY created_at DESC', [], (err, rows) => {
+        if (err) {
+          logger.error('Error listing users:', err)
+          reject(err)
+        } else {
+          resolve(rows)
+        }
+      })
+    })
+  }
+
+  async deleteUserByUsername(username) {
+    if (this.client === 'postgres') {
+      const result = await this.pg.query('DELETE FROM users WHERE username=$1', [username])
+      return result.rowCount
+    }
+    return new Promise((resolve, reject) => {
+      this.db.run('DELETE FROM users WHERE username = ?', [username], function(err){
+        if (err) {
+          logger.error('Error deleting user:', err)
+          reject(err)
+        } else {
+          resolve(this.changes)
+        }
       })
     })
   }
@@ -452,6 +614,11 @@ class Database {
         params.push(`%"album":"${filters.album}"%`)
         idx += 1
       }
+      if (filters.owner) {
+        clauses.push("metadata::text ILIKE $" + idx)
+        params.push(`%"owner":"${filters.owner}"%`)
+        idx += 1
+      }
       if (filters.status) {
         clauses.push('status = $' + idx)
         params.push(filters.status)
@@ -489,6 +656,11 @@ class Database {
       if (filters.album) {
         sql += ' AND metadata LIKE ?'
         params.push(`%"album":"${filters.album}"%`)
+      }
+
+      if (filters.owner) {
+        sql += ' AND metadata LIKE ?'
+        params.push(`%"owner":"${filters.owner}"%`)
       }
 
       if (filters.status) {

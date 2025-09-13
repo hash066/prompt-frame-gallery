@@ -1,0 +1,106 @@
+# Multi-stage build for Railway deployment
+FROM node:18-bullseye as base
+
+# Install system dependencies for node-gyp and PostgreSQL
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-distutils \
+    make \
+    g++ \
+    sqlite3 \
+    postgresql-client \
+    libpq-dev \
+    build-essential \
+    pkg-config \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy root package files
+COPY package*.json ./
+# Production install with lockfile optional; fall back to npm install if lock is out of sync
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
+
+# Backend build stage
+FROM base as backend
+WORKDIR /app/backend
+COPY backendUploader/package*.json ./
+
+# Install dependencies and rebuild native modules for the container architecture
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
+
+# Copy backend source code
+COPY backendUploader/ ./
+
+# Rebuild native modules specifically for the container architecture
+# This ensures sqlite3 and other native modules are compiled correctly
+RUN npm rebuild sqlite3 --unsafe-perm=true --allow-root
+
+# Skip Sharp rebuild - use pre-built binaries or disable image processing
+RUN echo "Skipping Sharp rebuild to avoid compilation issues"
+
+# Frontend build stage  
+FROM base as frontend
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+# Frontend needs devDeps to build; fall back to install if lock is out of sync
+RUN if [ -f package-lock.json ]; then npm ci || npm install; else npm install; fi
+COPY frontend/ ./
+# Explicitly specify Vite version for build
+RUN npx --yes vite@5.4.19 build
+
+# Processing worker build stage
+FROM base as worker
+WORKDIR /app/worker
+COPY processing-storage/package*.json ./
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
+COPY processing-storage/ ./
+
+# Final production image
+FROM node:18-bullseye as production
+RUN apt-get update && apt-get install -y \
+    sqlite3 \
+    postgresql-client \
+    libpq-dev \
+    python3 \
+    python3-distutils \
+    make \
+    g++ \
+    build-essential \
+    pkg-config \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd -g 1001 nodejs \
+  && useradd -m -u 1001 -g nodejs nodejs
+
+WORKDIR /app
+
+# Copy built applications
+COPY --from=backend --chown=nodejs:nodejs /app/backend ./backend
+COPY --from=frontend --chown=nodejs:nodejs /app/frontend ./frontend
+COPY --from=worker --chown=nodejs:nodejs /app/worker ./worker
+COPY --from=base --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --chown=nodejs:nodejs package*.json ./
+COPY --chown=nodejs:nodejs start-production.js ./
+COPY --chown=nodejs:nodejs start-local.js ./
+
+# Rebuild native modules in final image to ensure compatibility
+# This is critical for Railway's environment
+RUN npm rebuild sqlite3 --unsafe-perm=true --allow-root
+
+# Skip Sharp rebuild - use pre-built binaries or disable image processing
+RUN echo "Skipping Sharp rebuild to avoid compilation issues"
+
+# Create necessary directories
+RUN mkdir -p logs uploads data && chown -R nodejs:nodejs /app
+
+USER nodejs
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Start the application
+CMD ["npm", "start"]

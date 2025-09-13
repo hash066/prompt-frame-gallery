@@ -1,21 +1,40 @@
-import { useEffect, useState } from "react";
-import { Search, Filter, Grid, List, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Search, Grid, List, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listImages, getThumbnailUrl } from "@/lib/api";
+import { SearchAndFilters, type SearchFilters } from "@/components/SearchAndFilters";
 
 type UIItem = { id: string; url: string; title: string; prompt?: string; tags: string[]; likes: number; createdAt: string };
 
 export default function Gallery() {
-  const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [filters, setFilters] = useState<SearchFilters>({ search: "", sortBy: "uploaded_at", sortOrder: "DESC" });
   const [items, setItems] = useState<UIItem[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const queryParams = useMemo(() => {
+    const p: Record<string, string> = {}
+    if (filters.search) p.search = filters.search
+    if (filters.album) p.album = filters.album
+    if (filters.camera) p.camera = filters.camera
+    if (filters.lens) p.lens = filters.lens
+    if (filters.license) p.license = filters.license
+    if (filters.published !== undefined) p.published = String(filters.published)
+    if (filters.status) p.status = filters.status
+    if (filters.dateRange?.from) p.dateFrom = filters.dateRange.from.toISOString()
+    if (filters.dateRange?.to) p.dateTo = filters.dateRange.to.toISOString()
+    if (filters.tags && filters.tags.length > 0) p.tags = JSON.stringify(filters.tags)
+    if (filters.sortBy) p.sortBy = filters.sortBy
+    if (filters.sortOrder) p.sortOrder = filters.sortOrder
+    return p
+  }, [filters])
 
   useEffect(() => {
-    listImages().then(list => {
+    setLoading(true)
+    listImages(queryParams).then(list => {
       const mapped: UIItem[] = list.map(i => ({
         id: i.id,
         url: getThumbnailUrl(i.id),
@@ -25,22 +44,10 @@ export default function Gallery() {
         createdAt: i.uploadedAt
       }))
       setItems(mapped)
-    }).catch(() => setItems([]))
-  }, [])
+    }).catch(() => setItems([])).finally(() => setLoading(false))
+  }, [queryParams])
 
   const allTags = Array.from(new Set(items.flatMap(img => img.tags))).slice(0, 8);
-
-  const filteredImages = items.filter(img => {
-    const lowerQuery = searchQuery.toLowerCase()
-    const promptText = (img.prompt ?? '').toLowerCase()
-    const matchesSearch = img.title.toLowerCase().includes(lowerQuery) ||
-                         promptText.includes(lowerQuery) ||
-                         img.tags.some(tag => tag.toLowerCase().includes(lowerQuery));
-    
-    const matchesTag = !selectedTag || img.tags.includes(selectedTag);
-    
-    return matchesSearch && matchesTag;
-  });
 
   return (
     <div className="p-6 space-y-6">
@@ -58,69 +65,33 @@ export default function Gallery() {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-          <Input
-            placeholder="Search images, prompts, or tags..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-input/50 border-border/50 focus:border-primary transition-smooth"
-          />
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-border/50 hover:border-primary transition-smooth"
-          >
-            <Filter className="w-4 h-4 mr-2" />
-            Filters
-          </Button>
-          
-          <div className="flex rounded-lg border border-border/50 overflow-hidden">
-            <Button
-              variant={viewMode === "grid" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("grid")}
-              className="rounded-none"
-            >
-              <Grid className="w-4 h-4" />
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("list")}
-              className="rounded-none"
-            >
-              <List className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <SearchAndFilters 
+        filters={filters}
+        onFiltersChange={setFilters}
+        availableTags={allTags}
+        className="mt-2"
+      />
 
-      {/* Tags */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant={selectedTag === null ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSelectedTag(null)}
-          className="rounded-full"
-        >
-          All
-        </Button>
-        {allTags.map(tag => (
+      {/* View Mode Toggle */}
+      <div className="flex items-center justify-end">
+        <div className="flex rounded-lg border border-border/50 overflow-hidden">
           <Button
-            key={tag}
-            variant={selectedTag === tag ? "default" : "outline"}
+            variant={viewMode === "grid" ? "default" : "ghost"}
             size="sm"
-            onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-            className="rounded-full capitalize"
+            onClick={() => setViewMode("grid")}
+            className="rounded-none"
           >
-            {tag}
+            <Grid className="w-4 h-4" />
           </Button>
-        ))}
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("list")}
+            className="rounded-none"
+          >
+            <List className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Images Grid */}
@@ -129,7 +100,7 @@ export default function Gallery() {
           ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
           : "space-y-4"
       }>
-        {filteredImages.map((image) => (
+        {items.map((image) => (
           <Card 
             key={image.id} 
             className="group overflow-hidden bg-gallery-card hover:bg-gallery-hover transition-smooth border-border/50 hover:border-primary/30 glow-primary hover:glow-primary cursor-pointer"
@@ -139,12 +110,6 @@ export default function Gallery() {
                 src={image.url}
                 alt={image.title}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                onError={(e) => {
-                  const el = e.currentTarget as HTMLImageElement
-                  if (el.src !== '/placeholder.svg') {
-                    el.src = '/placeholder.svg'
-                  }
-                }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="absolute bottom-4 left-4 right-4 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 opacity-0 group-hover:opacity-100">
@@ -173,10 +138,6 @@ export default function Gallery() {
                     key={tag} 
                     variant="outline" 
                     className="text-xs capitalize border-border/50 hover:border-primary/50 transition-colors cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedTag(tag);
-                    }}
                   >
                     {tag}
                   </Badge>
@@ -192,7 +153,7 @@ export default function Gallery() {
         ))}
       </div>
 
-      {filteredImages.length === 0 && (
+      {!loading && items.length === 0 && (
         <div className="text-center py-12">
           <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
             <Search className="w-8 h-8 text-muted-foreground" />
