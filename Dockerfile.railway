@@ -18,8 +18,8 @@ WORKDIR /app
 
 # Copy root package files
 COPY package*.json ./
-# Production install with lockfile optional; fall back to npm install if lock is out of sync
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
+# Production install with simplified command to avoid CNI errors
+RUN npm install --omit=dev
 
 # Backend build stage
 FROM base as backend
@@ -27,7 +27,7 @@ WORKDIR /app/backend
 COPY backendUploader/package*.json ./
 
 # Install dependencies and rebuild native modules for the container architecture
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
+RUN npm install --omit=dev
 
 # Copy backend source code
 COPY backendUploader/ ./
@@ -43,8 +43,10 @@ RUN echo "Skipping Sharp rebuild to avoid compilation issues"
 FROM base as frontend
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-# Frontend needs devDeps to build; fall back to install if lock is out of sync
-RUN if [ -f package-lock.json ]; then npm ci || npm install; else npm install; fi
+# Frontend needs devDeps to build; simplified command to avoid CNI errors
+# Fix for rollup module error by setting ROLLUP_SKIP_NODEJS_NATIVE_BUILD
+ENV ROLLUP_SKIP_NODEJS_NATIVE_BUILD=true
+RUN npm install
 COPY frontend/ ./
 # Explicitly specify Vite version for build
 RUN npx --yes vite@5.4.19 build
@@ -53,7 +55,7 @@ RUN npx --yes vite@5.4.19 build
 FROM base as worker
 WORKDIR /app/worker
 COPY processing-storage/package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
+RUN npm install --omit=dev
 COPY processing-storage/ ./
 
 # Final production image
