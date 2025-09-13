@@ -10,7 +10,8 @@ import {
   Folder,
   Sparkles,
   LogOut,
-  Upload
+  Upload,
+  Palette
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -41,6 +42,7 @@ const mainNavItems = [
 
 const bottomNavItems = [
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Themes", url: "/themes", icon: Palette },
   { title: "Profile", url: "/profile", icon: User },
 ];
 

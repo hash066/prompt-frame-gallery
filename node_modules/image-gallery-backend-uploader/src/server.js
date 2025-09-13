@@ -9,7 +9,21 @@ const path = require('path')
 const fs = require('fs-extra')
 const fsp = require('fs').promises
 const { v4: uuidv4 } = require('uuid')
-const sharp = require('sharp')
+// Try to load Sharp, but handle gracefully if it fails
+let sharp
+let sharpAvailable = true
+try {
+  sharp = require('sharp')
+} catch (error) {
+  console.warn('Sharp not available, image processing will be limited:', error.message)
+  sharpAvailable = false
+  // Create a mock sharp object for basic functionality
+  sharp = {
+    metadata: () => Promise.resolve({ width: 0, height: 0, format: 'unknown' }),
+    resize: () => ({ jpeg: () => ({ pipe: (stream) => stream }) }),
+    pipe: (stream) => stream
+  }
+}
 const Minio = require('minio')
 const cloudinary = require('cloudinary').v2
 const Queue = require('bull')
@@ -102,6 +116,26 @@ fs.ensureDirSync(tempDir)
 const MINIO_BUCKET = process.env.MINIO_BUCKET || 'images'
 
 
+
+// Normalize a temp file path that might be an absolute Windows path from host
+const resolveTempPath = async (rawPath) => {
+  if (!rawPath) return null
+  try {
+    // If path exists as-is inside container, use it
+    if (await fs.pathExists(rawPath)) return rawPath
+  } catch {}
+  try {
+    // Translate known host prefix to container path
+    // Example host path: D:\\RVCE\\prompt-frame-gallery\\backendUploader\\uploads\\temp\\...
+    const normalized = rawPath
+      .replace(/\\/g, '/')
+      .replace(/.*backendUploader\/(uploads\/temp\/.*)$/i, '/app/$1')
+    if (normalized && normalized.startsWith('/app/uploads')) {
+      if (await fs.pathExists(normalized)) return normalized
+    }
+  } catch {}
+  return null
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -275,15 +309,94 @@ app.get('/api/health', async (req, res) => {
   }
 })
 
+// Simple auth endpoints
+// WARNING: This is a minimal demo auth with plaintext password storage for local/demo use only.
+// Do NOT use in production without hashing (bcrypt), sessions/JWTs, and proper validation.
+
+// Seed admin account from env or defaults (username & password = 'nexel')
+app.post('/api/auth/seed-admin', async (req, res) => {
+  try {
+    const username = process.env.ADMIN_USERNAME || 'nexel'
+    const password = process.env.ADMIN_PASSWORD || 'nexel'
+    const existing = await database.getUserByUsername(username)
+    if (!existing) {
+      await database.createUser({ id: uuidv4(), username, password, role: 'admin' })
+    }
+    res.json({ success: true })
+  } catch (err) {
+    logger.error('Seed admin failed:', err)
+    res.status(500).json({ error: 'Failed to seed admin' })
+  }
+})
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password } = req.body || {}
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' })
+    const existing = await database.getUserByUsername(username)
+    if (existing) return res.status(409).json({ error: 'username already exists' })
+    await database.createUser({ id: uuidv4(), username, password, role: 'creator' })
+    res.json({ success: true })
+  } catch (err) {
+    logger.error('Register failed:', err)
+    res.status(500).json({ error: 'registration failed' })
+  }
+})
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body || {}
+    if (!username || !password) return res.status(400).json({ error: 'username and password required' })
+    const user = await database.getUserByUsername(username)
+    if (!user || user.password !== password) return res.status(401).json({ error: 'invalid credentials' })
+    res.json({ success: true, role: user.role })
+  } catch (err) {
+    logger.error('Login failed:', err)
+    res.status(500).json({ error: 'login failed' })
+  }
+})
+
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const { username, password } = req.query
+    // Basic guard: require admin creds for this endpoint via query for demo simplicity
+    const adminUser = await database.getUserByUsername(username)
+    if (!adminUser || adminUser.password !== password || adminUser.role !== 'admin') {
+      return res.status(401).json({ error: 'unauthorized' })
+    }
+    const users = await database.listUsers()
+    res.json(users)
+  } catch (err) {
+    logger.error('List users failed:', err)
+    res.status(500).json({ error: 'failed to list users' })
+  }
+})
+
+app.delete('/api/admin/users/:username', async (req, res) => {
+  try {
+    const { adminUser, adminPass } = req.query
+    const admin = await database.getUserByUsername(adminUser)
+    if (!admin || admin.password !== adminPass || admin.role !== 'admin') {
+      return res.status(401).json({ error: 'unauthorized' })
+    }
+    const count = await database.deleteUserByUsername(req.params.username)
+    res.json({ success: true, deleted: count })
+  } catch (err) {
+    logger.error('Delete user failed:', err)
+    res.status(500).json({ error: 'failed to delete user' })
+  }
+})
+
 // Get all images
 app.get('/api/images', async (req, res) => {
   try {
-    const { page = 1, limit = 20, search, album, tags, sortBy = 'uploaded_at', sortOrder = 'desc' } = req.query
+    const { page = 1, limit = 20, search, album, tags, sortBy = 'uploaded_at', sortOrder = 'desc', owner } = req.query
     
     const filters = {
       search,
       album,
-      status: req.query.status
+      status: req.query.status,
+      owner
     }
     
     const offset = (page - 1) * limit
@@ -352,7 +465,8 @@ app.post('/api/images', upload.array('images', 10), async (req, res) => {
           metadata: {
             format: metadata.format,
             channels: metadata.channels,
-            density: metadata.density
+            density: metadata.density,
+            owner: (req.headers['x-user'] || '').toString() || null
           }
         }
         
@@ -571,6 +685,26 @@ app.get('/api/images/:id/url', async (req, res) => {
     }
     
     if (!objectKey) {
+      // As a last resort, serve a placeholder thumbnail while processing
+      if (variant === 'thumbnail') {
+        try {
+          res.setHeader('Cache-Control', 'no-cache')
+          res.type('image/png')
+          return sharp({
+            create: {
+              width: 200,
+              height: 200,
+              channels: 3,
+              background: '#e5e7eb'
+            }
+          })
+          .png()
+          .toBuffer()
+          .then(buf => res.end(buf))
+        } catch (phErr) {
+          logger.warn('Placeholder generation failed:', phErr)
+        }
+      }
       return res.status(404).json({ error: 'Variant not available' })
     }
     
@@ -660,6 +794,45 @@ app.get('/api/images/:id/download', async (req, res) => {
           logger.error('Error streaming temp file fallback:', fallbackError)
         }
       }
+      // Try to resolve Windows host path into container path and stream
+      if (image.status === 'processing' && image.temp_path) {
+        const resolved = await resolveTempPath(image.temp_path)
+        const candidates = []
+        if (resolved) candidates.push(resolved)
+        try {
+          const base = path.basename(image.temp_path)
+          candidates.push(path.join('/app/uploads/temp', base))
+          candidates.push(path.join('/app/src/uploads/temp', base))
+        } catch {}
+        let existingPath = null
+        for (const p of candidates) {
+          try {
+            if (p && await fs.pathExists(p)) { existingPath = p; break }
+          } catch {}
+        }
+        // If not found, try to find a file that ends with the original filename
+        if (!existingPath && image.original_name) {
+          const searchDirs = ['/app/uploads/temp', '/app/src/uploads/temp']
+          const suffix = image.original_name
+          for (const dir of searchDirs) {
+            try {
+              const entries = await fs.readdir(dir)
+              const match = entries.find(name => name.endsWith(suffix))
+              if (match) { existingPath = path.join(dir, match); break }
+            } catch {}
+          }
+        }
+        if (existingPath) {
+          if (variant === 'thumbnail') {
+            res.type('image/jpeg')
+            return fs.createReadStream(existingPath).pipe(
+              sharp().resize(200, 200, { fit: 'cover', position: 'center' }).jpeg({ quality: 85 })
+            ).pipe(res)
+          }
+          res.type(`image/${image.format || 'jpeg'}`)
+          return fs.createReadStream(existingPath).pipe(res)
+        }
+      }
 
       // Heuristic fallback: try conventional MinIO paths even if DB not updated yet
       try {
@@ -705,18 +878,30 @@ app.get('/api/images/:id/download', async (req, res) => {
 
     try {
       if (minioClient) {
-        const stat = await minioClient.statObject(MINIO_BUCKET, objectKey)
-        res.setHeader('Content-Type', stat.metaData?.['content-type'] || 'image/jpeg')
-        res.setHeader('Content-Length', stat.size)
-        res.setHeader('Cache-Control', 'public, max-age=31536000')
-        minioClient.getObject(MINIO_BUCKET, objectKey, (err, objStream) => {
+        // Try streaming directly from MinIO. If it fails, fall back to local filesystem when possible.
+        minioClient.getObject(MINIO_BUCKET, objectKey, async (err, objStream) => {
           if (err) {
             logger.error('Error streaming from MinIO:', err)
+            // Fallback to local file if available
+            try {
+              const filePath = path.join(uploadDir, objectKey)
+              if (await fs.pathExists(filePath)) {
+                res.setHeader('Cache-Control', 'public, max-age=31536000')
+                if (variant === 'thumbnail') {
+                  res.type('image/jpeg')
+                } else {
+                  res.type(`image/${image.format || 'jpeg'}`)
+                }
+                return fs.createReadStream(filePath).pipe(res)
+              }
+            } catch {}
             if (err.code === 'NoSuchKey') {
               return res.status(404).json({ error: 'File not found in storage' })
             }
             return res.status(500).json({ error: 'Download failed' })
           }
+          // Successful MinIO stream
+          res.setHeader('Cache-Control', 'public, max-age=31536000')
           objStream.pipe(res)
         })
       } else {

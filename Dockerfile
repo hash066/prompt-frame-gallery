@@ -1,18 +1,37 @@
-FROM node:18-alpine
+FROM node:20-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libvips-dev \
+    python3 \
+    make \
+    g++ \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install dependencies
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Environment variables
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
+ENV NODE_ENV=production
 
-# Copy source
+# Copy package files and lock files
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+COPY backendUploader/package*.json ./backendUploader/
+COPY processing-storage/package*.json ./processing-storage/
+
+# Install all dependencies using workspaces
+RUN npm install
+
+# Copy source code
 COPY . .
 
-# Build vite app
-RUN npm run build
+# Build frontend using npx from root
+RUN cd frontend && npx --yes vite@5.4.19 build
 
-# Serve with vite preview
+# Create directories
+RUN mkdir -p logs uploads data
+
 EXPOSE 3000
-ENV HOST 0.0.0.0
-CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["node", "start-production.js"]
