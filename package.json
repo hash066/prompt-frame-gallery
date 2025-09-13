@@ -4,6 +4,10 @@
   "description": "Full-stack image gallery application with React frontend and Node.js backend services",
   "private": true,
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
+    "preview": "vite preview",
     "start": "node start-production.js",
     "start:local": "node start-local.js",
     "start:production": "node start-production.js",
