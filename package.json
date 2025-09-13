@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "echo 'Building for Railway - no docker-compose needed'",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "start": "node start-production.js",
@@ -23,7 +23,6 @@
     "start:local:worker": "cd processing-storage && npm start",
     "stop": "docker-compose down",
     "stop:all": "docker-compose down -v",
-    "build": "echo 'Building for Railway - no docker-compose needed'",
     "logs": "docker-compose logs -f",
     "logs:backend": "docker-compose logs -f backend",
     "logs:frontend": "docker-compose logs -f frontend",
@@ -46,7 +45,8 @@
   "dependencies": {
     "cloudinary": "^2.7.0",
     "express": "^4.18.2",
-    "multer": "^2.0.2",
-    "http-proxy-middleware": "^2.0.6"
+    "http-proxy-middleware": "^2.0.6",
+    "lovable-tagger": "^1.1.9",
+    "multer": "^2.0.2"
   }
 }
