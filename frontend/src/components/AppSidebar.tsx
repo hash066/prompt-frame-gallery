@@ -10,8 +10,7 @@ import {
   Folder,
   Sparkles,
   LogOut,
-  Upload,
-  Brain
+  Upload
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -33,7 +32,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const mainNavItems = [
   { title: "Gallery", url: "/", icon: Home },
   { title: "Generate", url: "/generate", icon: Sparkles },
-  { title: "Classify", url: "/classify", icon: Brain },
   { title: "My Images", url: "/my-images", icon: Image },
   { title: "Upload", url: "/upload", icon: Upload },
   { title: "Albums", url: "/albums", icon: Folder },

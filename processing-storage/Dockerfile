@@ -13,8 +13,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies (use install to resolve lockfile mismatches)
-RUN npm install --omit=dev
+# Install dependencies
+RUN npm ci
 
 # Copy source code
 COPY src/ ./src/
