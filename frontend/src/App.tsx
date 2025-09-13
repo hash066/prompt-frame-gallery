@@ -16,6 +16,7 @@ import NotFound from "./pages/NotFound";
 import Upload from "./pages/Upload";
 import ImageClassifier from "./pages/ImageClassifier";
 import Admin from "./pages/Admin";
+import HealthCheck from "./pages/HealthCheck";
 // removed SimilaritySearchSpec route from nav; keep page if needed elsewhere
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
           {/* Auth routes without sidebar */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/health-check" element={<HealthCheck />} />
           
           {/* Main app routes with sidebar */}
           <Route path="/*" element={
