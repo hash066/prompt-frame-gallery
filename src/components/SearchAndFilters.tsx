@@ -60,9 +60,9 @@ export function SearchAndFilters({
 
   const activeFiltersCount = Object.keys(filters).filter(key => {
     const value = filters[key as keyof SearchFilters];
-    if (key === 'search') return value && value.length > 0;
+    if (key === 'search') return typeof value === 'string' && value.length > 0;
     if (key === 'tags') return Array.isArray(value) && value.length > 0;
-    if (key === 'dateRange') return value && (value.from || value.to);
+    if (key === 'dateRange') return value && typeof value === 'object' && 'from' in value && (value.from || value.to);
     return value !== undefined && value !== '';
   }).length - 2; // Exclude sortBy and sortOrder from count
 
