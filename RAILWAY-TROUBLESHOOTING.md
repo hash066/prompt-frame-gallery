@@ -2,7 +2,21 @@
 
 ## Common Issues and Solutions
 
-### 1. CNI Setup Error During Build
+### 1. Rollup Module Not Found Error
+
+**Problem:**
+```
+Error: Cannot find module @rollup/rollup-linux-x64-gnu. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+```
+
+**Solution:**
+This error occurs due to npm's handling of optional dependencies for rollup in the Linux environment. We've fixed this by:
+
+1. Setting the environment variable `ROLLUP_SKIP_NODEJS_NATIVE_BUILD=true` in the Dockerfile.railway
+2. This tells rollup to skip trying to use native modules that might not be compatible with the deployment environment
+3. The fix is applied in the frontend build stage of the Dockerfile
+
+### 2. CNI Setup Error During Build
 
 **Problem:**
 ```
